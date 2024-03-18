@@ -2,6 +2,22 @@
 #include <amino/mat.h>
 #include <cmath>
 
+void
+aafeq(const char *name, double a, double b, double tol)
+{
+    if (!aa_feq(a, b, tol)) {
+        fprintf(stderr, "FAILED: %s\n", name);
+        fprintf(stderr, "a: %f, b: %f\n", a, b);
+        abort();
+    }
+}
+
+static inline void
+admeq( const char *name, const double *A, const double *B, double tol, size_t size)
+{
+    aafeq( name, aa_la_ssd(size,A,B), 0, tol );
+}
+
 static inline void
 mat_print(const double *data, const int rows, const int cols)
 {
@@ -26,13 +42,13 @@ array_print(const double *data, const int n)
 
 /* ik7dof takes the DH parameter link lengths, desired position of tool,
    desired orientation of tool, and returns the joint angles needed */
-void ik7dof(const double &d1, 
-            const double &d2, 
-            const double &d3, 
-            const double &d4, 
-            const double &d5, 
-            const double &d6, 
-            const double &d7,
+void ik7dof(const double &alpha1, const double &a1, const double &d1,
+            const double &alpha2, const double &a2, const double &d2, 
+            const double &alpha3, const double &a3, const double &d3, 
+            const double &alpha4, const double &a4, const double &d4, 
+            const double &alpha5, const double &a5, const double &d5, 
+            const double &alpha6, const double &a6, const double &d6, 
+            const double &alpha7, const double &a7, const double &d7,
             const double p_T_data[3],
             const struct amino::Quat &qu_T,
             const double &elbow_sign_param,
@@ -273,15 +289,47 @@ void ik7dof(const double &d1,
     /* Calculate joint 7 */
     double q7 = atan2( wrist_sign_param*R_W_data[5] , -wrist_sign_param*R_W_data[2] );
     std::cout << "Joint q7 = " << q7 << "\n\n";
+    // q7 = 0;
 
+    /* Check with forward kinematics, using modified (proximal) DH per M. Gong et al. */
+    double T_0_1[12];
+    aa_tf_dhprox2tfmat(0, 0, d1, q1, T_0_1);
+    double T_1_2[12];
+    aa_tf_dhprox2tfmat(alpha1, a1, d2, q2, T_1_2);
+    double T_2_3[12];
+    aa_tf_dhprox2tfmat(alpha2, a2, d3, q3, T_2_3);
+    double T_3_4[12];
+    aa_tf_dhprox2tfmat(alpha3, a3, d4, q4, T_3_4);
+    double T_4_5[12];
+    aa_tf_dhprox2tfmat(alpha4, a4, d5, q5, T_4_5);
+    double T_5_6[12];
+    aa_tf_dhprox2tfmat(alpha5, a5, d6, q6, T_5_6);
+    double T_6_7[12];
+    aa_tf_dhprox2tfmat(alpha6, a6, d7, q7, T_6_7);   
+    double T_0_2[12];  
+    aa_tf_12chain(T_0_1, T_1_2, T_0_2);
+    double T_0_3[12];  
+    aa_tf_12chain(T_0_2, T_2_3, T_0_3);
+    double T_0_4[12];  
+    aa_tf_12chain(T_0_3, T_3_4, T_0_4);
+    double T_0_5[12];  
+    aa_tf_12chain(T_0_4, T_4_5, T_0_5);
+    double T_0_6[12];  
+    aa_tf_12chain(T_0_5, T_5_6, T_0_6);
+    double T_0_7[12];  
+    aa_tf_12chain(T_0_6, T_6_7, T_0_7);
 
-    /* Check with forward kinematics */
-    struct amino::Vec3 z_d_1{0, 0, d1};
-    struct amino::ZAngle z_angle_1{q1};
-    struct amino::Quat qu_z_1{z_angle_1}; // aa_tf_quat
-    struct amino::QuatTran qutr_z_1(qu_z_1, z_d_1);
+    std::cout << "Transf matrix from result:\n";
+    mat_print(T_0_7, 3, 4);
 
+    double T_0_7_given[12];
+    aa_tf_qv2tfmat(qu_T.data, p_T_data, T_0_7_given);
+    std::cout << "Transf matrix given:\n";
+    mat_print(T_0_7_given, 3, 4);
 
+    // struct aa_dmat T_result = AA_DMAT_INIT(3, 4, T_0_7, 3);
+    // struct aa_dmat T_given = AA_DMAT_INIT(3, 4, T_0_7_given, 3);
+    admeq( "result T == given T", T_0_7, T_0_7_given, AA_EPSILON, 12 );
 
 
     std::cout << "Got to the end of ik7dof()!\n\n";
@@ -305,6 +353,22 @@ int main(int argc, char ** argv)
     double d6 = 0;
     double d7 = 0.126;
 
+    double alpha1 = -M_PI_2; // radians
+    double alpha2 = M_PI_2;
+    double alpha3 = -M_PI_2;
+    double alpha4 = M_PI_2;
+    double alpha5 = -M_PI_2;
+    double alpha6 = M_PI_2;
+    double alpha7 = 0;
+
+    double a1 = 0; // meter
+    double a2 = 0;
+    double a3 = 0;
+    double a4 = 0;
+    double a5 = 0;
+    double a6 = 0;
+    double a7 = 0;
+
     /* User-assigned position of tool */
     double p_T_data[] = {d5+d7, 0, d1+d3};
 
@@ -321,8 +385,19 @@ int main(int argc, char ** argv)
     double wrist_sign_param = 1; // either 1 or -1
 
     /* Call ik function */
-    ik7dof(d1, d2, d3, d4, d5, d6, d7, p_T_data, qu_T, 
-           elbow_sign_param, elbow_ang_param, arm_sign_param, wrist_sign_param);
+    ik7dof(alpha1, a1, d1, 
+           alpha2, a2, d2,  
+           alpha3, a3, d3,  
+           alpha4, a4, d4,  
+           alpha5, a5, d5,  
+           alpha6, a6, d6, 
+           alpha7, a7, d7, 
+           p_T_data, 
+           qu_T, 
+           elbow_sign_param, 
+           elbow_ang_param, 
+           arm_sign_param, 
+           wrist_sign_param);
 
     std::cout << "Got to the end of main()! Returning 0 next...\n\n";
 
