@@ -396,3 +396,34 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# Copied from SDCL repo by TQBH, 2024-03-18
+*.pyc
+*.so
+*.json
+*.vscode
+.pdf
+*.avi
+.idea/
+build/
+CMakeLists.txt.user
+CMakeCache.txt
+CMakeFiles
+CMakeScripts
+Testing
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps
+*.csv
+*.eps
+*.db
+*.pov
+*.a
+
+resource/**/*.*
+!resource/**/*.robray
+!resource/**/CMakeLists.txt
+!resource/*.png
