@@ -19,11 +19,28 @@ admeq( const char *name, const double *A, const double *B, double tol, size_t si
 }
 
 static inline void
-mat_print(const double *data, const int rows, const int cols)
+mat_print_raw(const double *data, const int rows, const int cols)
 {
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
             std::cout << data[rows*j+i] << "  ";
+        }
+        std::cout << "\n";
+    }
+    std::cout << "\n";
+}
+
+static inline void
+mat_print_pretty(const double *data, const int rows, const int cols)
+{
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            double x = data[rows*j+i];
+            if (fabs(x) < 1e-6) {
+                std::cout << 0 << "  ";
+            } else {
+                std::cout << x << "  ";
+            }
         }
         std::cout << "\n";
     }
@@ -242,7 +259,7 @@ void ik7dof(const double &alpha1, const double &a1, const double &d1,
     double R_S_data[9];
     aa_tf_quat2rotmat(qu_S_data, R_S_data);
     std::cout << "Matrix R_S = R_0_3:\n";
-    mat_print(R_S_data, 3, 3);
+    mat_print_raw(R_S_data, 3, 3);
 
     /* Calculate joint 2 */
     double q2 = arm_sign_param * acos(R_S_data[8]);
@@ -276,7 +293,7 @@ void ik7dof(const double &alpha1, const double &a1, const double &d1,
     double R_W_data[9];
     aa_tf_quat2rotmat(qu_W_data, R_W_data);
     std::cout << "Matrix R_W = R_4_7:\n";
-    mat_print(R_W_data, 3, 3);
+    mat_print_raw(R_W_data, 3, 3);
 
     /* Calculate joint 6 */
     double q6 = wrist_sign_param * acos(R_W_data[8]);
@@ -291,41 +308,99 @@ void ik7dof(const double &alpha1, const double &a1, const double &d1,
     std::cout << "Joint q7 = " << q7 << "\n\n";
     // q7 = 0;
 
-    /* Check with forward kinematics, using modified (proximal) DH per M. Gong et al. */
-    double T_0_1[12];
-    aa_tf_dhprox2tfmat(0, 0, d1, q1, T_0_1);
-    double T_1_2[12];
-    aa_tf_dhprox2tfmat(alpha1, a1, d2, q2, T_1_2);
-    double T_2_3[12];
-    aa_tf_dhprox2tfmat(alpha2, a2, d3, q3, T_2_3);
-    double T_3_4[12];
-    aa_tf_dhprox2tfmat(alpha3, a3, d4, q4, T_3_4);
-    double T_4_5[12];
-    aa_tf_dhprox2tfmat(alpha4, a4, d5, q5, T_4_5);
-    double T_5_6[12];
-    aa_tf_dhprox2tfmat(alpha5, a5, d6, q6, T_5_6);
-    double T_6_7[12];
-    aa_tf_dhprox2tfmat(alpha6, a6, d7, q7, T_6_7);   
-    double T_0_2[12];  
-    aa_tf_12chain(T_0_1, T_1_2, T_0_2);
-    double T_0_3[12];  
-    aa_tf_12chain(T_0_2, T_2_3, T_0_3);
-    double T_0_4[12];  
-    aa_tf_12chain(T_0_3, T_3_4, T_0_4);
-    double T_0_5[12];  
-    aa_tf_12chain(T_0_4, T_4_5, T_0_5);
-    double T_0_6[12];  
-    aa_tf_12chain(T_0_5, T_5_6, T_0_6);
-    double T_0_7[12];  
-    aa_tf_12chain(T_0_6, T_6_7, T_0_7);
 
+    // /* Check with forward kinematics, using modified (proximal) DH per M. Gong et al. */
+    // double T_0_1[12];
+    // aa_tf_dhprox2tfmat(0, 0, d1, q1, T_0_1);
+    // double T_1_2[12];
+    // aa_tf_dhprox2tfmat(alpha1, a1, d2, q2, T_1_2);
+    // double T_2_3[12];
+    // aa_tf_dhprox2tfmat(alpha2, a2, d3, q3, T_2_3);
+    // double T_3_4[12];
+    // aa_tf_dhprox2tfmat(alpha3, a3, d4, q4, T_3_4);
+    // double T_4_5[12];
+    // aa_tf_dhprox2tfmat(alpha4, a4, d5, q5, T_4_5);
+    // double T_5_6[12];
+    // aa_tf_dhprox2tfmat(alpha5, a5, d6, q6, T_5_6);
+    // double T_6_7[12];
+    // aa_tf_dhprox2tfmat(alpha6, a6, d7, q7, T_6_7);   
+    // double T_0_2[12];  
+    // aa_tf_12chain(T_0_1, T_1_2, T_0_2);
+    // double T_0_3[12];  
+    // aa_tf_12chain(T_0_2, T_2_3, T_0_3);
+    // double T_0_4[12];  
+    // aa_tf_12chain(T_0_3, T_3_4, T_0_4);
+    // double T_0_5[12];  
+    // aa_tf_12chain(T_0_4, T_4_5, T_0_5);
+    // double T_0_6[12];  
+    // aa_tf_12chain(T_0_5, T_5_6, T_0_6);
+    // double T_0_7[12];  
+    // aa_tf_12chain(T_0_6, T_6_7, T_0_7);
+
+    // std::cout << "Transf matrix from result:\n";
+    // mat_print_pretty(T_0_7, 3, 4);
+
+    // double T_0_7_given[12];
+    // aa_tf_qv2tfmat(qu_T.data, p_T_data, T_0_7_given);
+    // std::cout << "Transf matrix given:\n";
+    // mat_print_raw(T_0_7_given, 3, 4);
+
+    // // struct aa_dmat T_result = AA_DMAT_INIT(3, 4, T_0_7, 3);
+    // // struct aa_dmat T_given = AA_DMAT_INIT(3, 4, T_0_7_given, 3);
+    // admeq( "result T == given T", T_0_7, T_0_7_given, AA_EPSILON, 12 );
+
+
+    /* Check with forward kinematics, using modified (proximal) DH per M. Gong et al. */
+    double qu_0_1[4];
+    double v_0_1[3];
+    aa_tf_dhprox2qv(0, 0, d1, q1, qu_0_1, v_0_1);
+    double qu_1_2[4];
+    double v_1_2[3];
+    aa_tf_dhprox2qv(alpha1, a1, d2, q2, qu_1_2, v_1_2);
+    double qu_2_3[4];
+    double v_2_3[3];
+    aa_tf_dhprox2qv(alpha2, a2, d3, q3, qu_2_3, v_2_3);
+    double qu_3_4[4];
+    double v_3_4[3];
+    aa_tf_dhprox2qv(alpha3, a3, d4, q4, qu_3_4, v_3_4);
+    double qu_4_5[4];
+    double v_4_5[3];
+    aa_tf_dhprox2qv(alpha4, a4, d5, q5, qu_4_5, v_4_5);
+    double qu_5_6[4];
+    double v_5_6[3];
+    aa_tf_dhprox2qv(alpha5, a5, d6, q6, qu_5_6, v_5_6);
+    double qu_6_7[4];
+    double v_6_7[3];
+    aa_tf_dhprox2qv(alpha6, a6, d7, q7, qu_6_7, v_6_7);
+
+    double qu_0_2[4];
+    double v_0_2[3];
+    aa_tf_qv_chain(qu_0_1, v_0_1, qu_1_2, v_1_2, qu_0_2, v_0_2);
+    double qu_0_3[4];
+    double v_0_3[3];
+    aa_tf_qv_chain(qu_0_2, v_0_2, qu_2_3, v_2_3, qu_0_3, v_0_3);
+    double qu_0_4[4];
+    double v_0_4[3];
+    aa_tf_qv_chain(qu_0_3, v_0_3, qu_3_4, v_3_4, qu_0_4, v_0_4);
+    double qu_0_5[4];
+    double v_0_5[3];
+    aa_tf_qv_chain(qu_0_4, v_0_4, qu_4_5, v_4_5, qu_0_5, v_0_5);
+    double qu_0_6[4];
+    double v_0_6[3];
+    aa_tf_qv_chain(qu_0_5, v_0_5, qu_5_6, v_5_6, qu_0_6, v_0_6);
+    double qu_0_7[4];
+    double v_0_7[3];
+    aa_tf_qv_chain(qu_0_6, v_0_6, qu_6_7, v_6_7, qu_0_7, v_0_7);
+
+    double T_0_7[12];
+    aa_tf_qv2tfmat(qu_0_7, v_0_7, T_0_7);
     std::cout << "Transf matrix from result:\n";
-    mat_print(T_0_7, 3, 4);
+    mat_print_pretty(T_0_7, 3, 4);
 
     double T_0_7_given[12];
     aa_tf_qv2tfmat(qu_T.data, p_T_data, T_0_7_given);
     std::cout << "Transf matrix given:\n";
-    mat_print(T_0_7_given, 3, 4);
+    mat_print_raw(T_0_7_given, 3, 4);
 
     // struct aa_dmat T_result = AA_DMAT_INIT(3, 4, T_0_7, 3);
     // struct aa_dmat T_given = AA_DMAT_INIT(3, 4, T_0_7_given, 3);
@@ -370,11 +445,13 @@ int main(int argc, char ** argv)
     double a7 = 0;
 
     /* User-assigned position of tool */
-    double p_T_data[] = {d5+d7, 0, d1+d3};
+    double p_T_data[] = {d3*cos(M_PI_4) + d5 + d7*cos(M_PI_4), 
+                         0, 
+                         d1 + d3*cos(M_PI_4) - d7*cos(M_PI_4)};
 
     /* User-assigned orientation/rotation of tool */
     // double angle = M_PI / 2;
-    double angle = M_PI_2; // equal to M_PI / 2
+    double angle = M_PI*3/4;
     struct amino::YAngle y_angle{angle};
     struct amino::Quat qu_T{y_angle};
 
@@ -382,7 +459,7 @@ int main(int argc, char ** argv)
     double elbow_sign_param = 1; // either 1 or -1
     double elbow_ang_param = 0; // from -pi to pi
     double arm_sign_param = 1; // either 1 or -1
-    double wrist_sign_param = 1; // either 1 or -1
+    double wrist_sign_param = -1; // either 1 or -1
 
     /* Call ik function */
     ik7dof(alpha1, a1, d1, 
