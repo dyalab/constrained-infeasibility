@@ -59,13 +59,10 @@ array_print(const double *data, const int n)
 
 /* ik7dof takes the DH parameter link lengths, desired position of tool,
    desired orientation of tool, and returns the joint angles needed */
-void ik7dof(const double &alpha1, const double &a1, const double &d1,
-            const double &alpha2, const double &a2, const double &d2, 
-            const double &alpha3, const double &a3, const double &d3, 
-            const double &alpha4, const double &a4, const double &d4, 
-            const double &alpha5, const double &a5, const double &d5, 
-            const double &alpha6, const double &a6, const double &d6, 
-            const double &alpha7, const double &a7, const double &d7,
+void ik7dof(const double &d1,
+            const double &d3,
+            const double &d5,
+            const double &d7,
             const double p_T_data[3],
             const struct amino::Quat &qu_T,
             const double &elbow_sign_param,
@@ -106,6 +103,23 @@ void ik7dof(const double &alpha1, const double &a1, const double &d1,
     }
 
     /* See Figure 1 in M. Gong et al. for clarification on the DH parameters */
+    double alpha1 = -M_PI_2; // radians
+    double alpha2 = M_PI_2;
+    double alpha3 = -M_PI_2;
+    double alpha4 = M_PI_2;
+    double alpha5 = -M_PI_2;
+    double alpha6 = M_PI_2;
+    double alpha7 = 0;
+    double a1 = 0; // meter
+    double a2 = 0;
+    double a3 = 0;
+    double a4 = 0;
+    double a5 = 0;
+    double a6 = 0;
+    double a7 = 0;
+    double d2 = 0;
+    double d4 = 0;
+    double d6 = 0;
     double d_BS = d1; // B=base, S=shoulder, E=elbow, W=wrist, T=tool
     double d_SE = d3;
     double d_EW = d5;
@@ -421,28 +435,9 @@ int main(int argc, char ** argv)
 
     /* See Figure 1 in M. Gong et al. for clarification on the DH parameters below*/
     double d1 = 0.360; // meter
-    double d2 = 0;
     double d3 = 0.420;
-    double d4 = 0;
     double d5 = 0.400;
-    double d6 = 0;
     double d7 = 0.126;
-
-    double alpha1 = -M_PI_2; // radians
-    double alpha2 = M_PI_2;
-    double alpha3 = -M_PI_2;
-    double alpha4 = M_PI_2;
-    double alpha5 = -M_PI_2;
-    double alpha6 = M_PI_2;
-    double alpha7 = 0;
-
-    double a1 = 0; // meter
-    double a2 = 0;
-    double a3 = 0;
-    double a4 = 0;
-    double a5 = 0;
-    double a6 = 0;
-    double a7 = 0;
 
     /* User-assigned position of tool */
     double p_T_data[] = {d3*cos(M_PI_4) + d5 + d7*cos(M_PI_4), 
@@ -462,13 +457,10 @@ int main(int argc, char ** argv)
     double wrist_sign_param = -1; // either 1 or -1
 
     /* Call ik function */
-    ik7dof(alpha1, a1, d1, 
-           alpha2, a2, d2,  
-           alpha3, a3, d3,  
-           alpha4, a4, d4,  
-           alpha5, a5, d5,  
-           alpha6, a6, d6, 
-           alpha7, a7, d7, 
+    ik7dof(d1,
+           d3,
+           d5,
+           d7, 
            p_T_data, 
            qu_T, 
            elbow_sign_param, 
