@@ -57,6 +57,28 @@ array_print(const double *data, const int n)
     std::cout << "\n";
 }
 
+static inline void
+check_joint_limits(double &q, 
+                   const double joint_limits[14], 
+                   const int &joint_num)
+{
+    int i = 0;
+    while (i < 10 && q < joint_limits[(joint_num-1)*2]) {
+        q += 2*M_PI;
+        ++i;
+    }
+    i = 0;
+    while (i < 10 && q > joint_limits[(joint_num-1)*2+1]) {
+        q -= 2*M_PI;
+        ++i;
+    }
+    if (q < joint_limits[(joint_num-1)*2] || q > joint_limits[(joint_num-1)*2+1]) {
+        std::cout << "ERROR: Joint " << joint_num << " cannot be within its limits, for the given pose and parameters.\n\n";
+        assert(q >= joint_limits[(joint_num-1)*2] && q <= joint_limits[(joint_num-1)*2+1]);
+    }
+}
+
+
 /* ik7dof takes the DH parameter link lengths, desired position of tool,
    desired orientation of tool, and returns the joint angles needed */
 void ik7dof(const double &d1,
@@ -68,7 +90,8 @@ void ik7dof(const double &d1,
             const double &elbow_sign_param,
             const double &elbow_ang_param,
             const double &arm_sign_param,
-            const double &wrist_sign_param) 
+            const double &wrist_sign_param,
+            const double joint_limits[14]) 
 {
     std::cout << "Got into ik7dof() successfully!\n\n";
 
@@ -166,8 +189,9 @@ void ik7dof(const double &d1,
     /* Find joint 4 */
     double cos_SEW  = (pow(d_SE,2)+pow(d_EW,2)-pow(d_SW,2)) / (2*d_SE*d_EW);
     double q4 = elbow_sign_param * (M_PI - acos(cos_SEW));
-    // while () // joint limits
-    std::cout << "Joint q4 = " << q4 << "\n\n";
+    std::cout << "Joint q4 before limit check = " << q4 << "\n";
+    check_joint_limits(q4, joint_limits, 4);
+    std::cout << "Joint q4 after limit check = " << q4 << "\n\n";
 
 
     /* Columns for coordinate system sigma-D when psi (elbow self-motion angle) = 0 */
@@ -278,15 +302,21 @@ void ik7dof(const double &d1,
 
     /* Calculate joint 2 */
     double q2 = arm_sign_param * acos(R_S_data[8]);
-    std::cout << "Joint q2 = " << q2 << "\n\n";
+    std::cout << "Joint q2 before limit check = " << q2 << "\n";
+    check_joint_limits(q2, joint_limits, 2);
+    std::cout << "Joint q2 after limit check = " << q2 << "\n\n";
 
     /* Calculate joint 1*/
     double q1 = atan2( arm_sign_param*R_S_data[7] , arm_sign_param*R_S_data[6] );
-    std::cout << "Joint q1 = " << q1 << "\n\n";
+    std::cout << "Joint q1 before limit check = " << q1 << "\n";
+    check_joint_limits(q1, joint_limits, 1);
+    std::cout << "Joint q1 after limit check = " << q1 << "\n\n";
 
     /* Calculate joint 3*/
     double q3 = atan2( arm_sign_param*R_S_data[5] , -arm_sign_param*R_S_data[2] );
-    std::cout << "Joint q3 = " << q3 << "\n\n";
+    std::cout << "Joint q3 before limit check = " << q3 << "\n";
+    check_joint_limits(q3, joint_limits, 3);
+    std::cout << "Joint q3 after limit check = " << q3 << "\n\n";
 
 
     /* Find rotation of last three joints (5, 6, 7) combined, qu_W */
@@ -312,15 +342,21 @@ void ik7dof(const double &d1,
 
     /* Calculate joint 6 */
     double q6 = wrist_sign_param * acos(R_W_data[8]);
-    std::cout << "Joint q6 = " << q6 << "\n\n";
+    std::cout << "Joint q6 before limit check = " << q6 << "\n";
+    check_joint_limits(q6, joint_limits, 6);
+    std::cout << "Joint q6 after limit check = " << q6 << "\n\n";
 
     /* Calculate joint 5 */
     double q5 = atan2( wrist_sign_param*R_W_data[7] , wrist_sign_param*R_W_data[6] );
-    std::cout << "Joint q5 = " << q5 << "\n\n";
+    std::cout << "Joint q5 before limit check = " << q5 << "\n";
+    check_joint_limits(q5, joint_limits, 5);
+    std::cout << "Joint q5 after limit check = " << q5 << "\n\n";
 
     /* Calculate joint 7 */
     double q7 = atan2( wrist_sign_param*R_W_data[5] , -wrist_sign_param*R_W_data[2] );
-    std::cout << "Joint q7 = " << q7 << "\n\n";
+    std::cout << "Joint q7 before limit check = " << q7 << "\n";
+    check_joint_limits(q7, joint_limits, 7);
+    std::cout << "Joint q7 after limit check = " << q7 << "\n\n";
     // q7 = 0;
 
 
@@ -429,7 +465,7 @@ void ik7dof(const double &d1,
 
 int main(int argc, char ** argv) 
 {
-    std::cout << "Got into main() successfully!\n\n";
+    // std::cout << "Got into main() successfully!\n\n";
 
     /* Following  "Analytical Inverse Kinematics and Self-Motion 
     Application for 7-DOF Redundant Manipulator" - M. Gong et al.*/
@@ -457,6 +493,15 @@ int main(int argc, char ** argv)
     double arm_sign_param = 1; // either 1 or -1
     double wrist_sign_param = 1; // either 1 or -1
 
+    /* Joint limits */
+    double joint_limits[14] = {-3.12159, 3.12159, // {lower_limit_1, upper_limit_1, lower_limit_2, ...}
+                               -2.12, 2.12,
+                               -3.12159, 3.12159,
+                               -2.16, 2.16,
+                               -3.12159, 3.12159,
+                               -2.07, 2.07,
+                               -2.94, 2.94}; 
+
     /* Call ik function */
     ik7dof(d1,
            d3,
@@ -467,9 +512,10 @@ int main(int argc, char ** argv)
            elbow_sign_param, 
            elbow_ang_param, 
            arm_sign_param, 
-           wrist_sign_param);
+           wrist_sign_param,
+           joint_limits);
 
-    std::cout << "Got to the end of main()! Returning 0 next...\n\n";
+    // std::cout << "Got to the end of main()! Returning 0 next...\n\n";
 
     return 0;
 }
