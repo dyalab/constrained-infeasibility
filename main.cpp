@@ -166,6 +166,7 @@ void ik7dof(const double &d1,
     /* Find joint 4 */
     double cos_SEW  = (pow(d_SE,2)+pow(d_EW,2)-pow(d_SW,2)) / (2*d_SE*d_EW);
     double q4 = elbow_sign_param * (M_PI - acos(cos_SEW));
+    // while () // joint limits
     std::cout << "Joint q4 = " << q4 << "\n\n";
 
 
@@ -434,10 +435,10 @@ int main(int argc, char ** argv)
     Application for 7-DOF Redundant Manipulator" - M. Gong et al.*/
 
     /* See Figure 1 in M. Gong et al. for clarification on the DH parameters below*/
-    double d1 = 0.360; // meter
-    double d3 = 0.420;
-    double d5 = 0.400;
-    double d7 = 0.126;
+    double d1 = 0.381; // meter. These dimensions are for the Schunk arm
+    double d3 = 0.33;
+    double d5 = 0.32;
+    double d7 = 0.29;
 
     /* User-assigned position of tool */
     double p_T_data[] = {d3*cos(M_PI_4) + d5 + d7*cos(M_PI_4), 
@@ -454,7 +455,7 @@ int main(int argc, char ** argv)
     double elbow_sign_param = 1; // either 1 or -1
     double elbow_ang_param = 0; // from -pi to pi
     double arm_sign_param = 1; // either 1 or -1
-    double wrist_sign_param = -1; // either 1 or -1
+    double wrist_sign_param = 1; // either 1 or -1
 
     /* Call ik function */
     ik7dof(d1,
