@@ -22,10 +22,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 find_package(PkgConfig)
 
 # Search for the pkg-config packages
-# pkg_search_module(SDL2 REQUIRED sdl2)
-# pkg_search_module(GL REQUIRED gl)
+pkg_search_module(SDL2 REQUIRED sdl2)
+pkg_search_module(GL REQUIRED gl)
 pkg_search_module(AMINO REQUIRED amino)
-# pkg_search_module(AMINO_GL REQUIRED amino-gl)
+pkg_search_module(AMINO_GL REQUIRED amino-gl)
 
 # ------------------------------ environment --------------------------------------------------
 # add_library(
@@ -114,6 +114,8 @@ pkg_search_module(AMINO REQUIRED amino)
 # set(THREADS_PREFER_PTHREAD_FLAG ON)
 
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lSDL2")
+
 add_compile_options(-g)
 add_compile_options(-frounding-math)
 
@@ -123,7 +125,7 @@ add_executable(mainExec main.cpp)
 
 # target_link_libraries(mainExec PRIVATE env)
 target_link_libraries(mainExec PRIVATE "${AMINO_LIBRARIES}")
-# target_link_libraries(mainExec PRIVATE SDCL)
+target_link_libraries(mainExec PRIVATE "${AMINO_GL_LIBRARIES}")
 # target_link_libraries(mainExec PRIVATE scenes)
 # target_link_libraries(mainExec PRIVATE parser)
 
@@ -131,4 +133,4 @@ target_link_libraries(mainExec PRIVATE "${AMINO_LIBRARIES}")
 
 # target_include_directories(mainExec PRIVATE "${OMPL_INCLUDE_DIRS}")
 target_include_directories(mainExec PUBLIC ${AMINO_INCLUDE_DIRS})
-# target_include_directories(mainExec PUBLIC ${SDL2_INCLUDE_DIRS})
+target_include_directories(mainExec PUBLIC ${SDL2_INCLUDE_DIRS})

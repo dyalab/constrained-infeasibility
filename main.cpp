@@ -1,6 +1,13 @@
 #include <amino.h>
-#include <amino/mat.h>
+// #include <amino/mat.h>
+// #include "amino/rx/rxtype.h"
+#include <amino/rx/scenegraph.h>
+#include <amino/rx/scene_plugin.h>
+#include <amino/rx/scene_win.h>
+// #include "amino/rx/scene_gl.h"
+// #include "amino/rx/scene_geom.h"
 #include <cmath>
+#include <unistd.h> 
 
 void
 aafeq(const char *name, double a, double b, double tol)
@@ -13,7 +20,7 @@ aafeq(const char *name, double a, double b, double tol)
 }
 
 static inline void
-admeq( const char *name, const double *A, const double *B, double tol, size_t size)
+admeq(const char *name, const double *A, const double *B, double tol, size_t size)
 {
     aafeq( name, aa_la_ssd(size,A,B), 0, tol );
 }
@@ -73,10 +80,14 @@ check_joint_limits(double &q,
         ++i;
     }
     if (q < joint_limits[(joint_num-1)*2] || q > joint_limits[(joint_num-1)*2+1]) {
-        std::cout << "ERROR: Joint " << joint_num << " cannot be within its limits, for the given pose and parameters.\n\n";
+        std::cout << "ERROR: Joint " << joint_num << " cannot be within its limits"; 
+        std::cout << ", for the given pose and parameters.\n\n";
         assert(q >= joint_limits[(joint_num-1)*2] && q <= joint_limits[(joint_num-1)*2+1]);
     }
 }
+
+static int SCREEN_WIDTH = 800;
+static int SCREEN_HEIGHT = 600;
 
 
 /* ik7dof takes the DH parameter link lengths, desired position of tool,
@@ -465,7 +476,7 @@ void ik7dof(const double &d1,
 
 int main(int argc, char ** argv) 
 {
-    // std::cout << "Got into main() successfully!\n\n";
+    std::cout << "Got into main() successfully!\n\n";
 
     /* Following  "Analytical Inverse Kinematics and Self-Motion 
     Application for 7-DOF Redundant Manipulator" - M. Gong et al.*/
@@ -476,46 +487,94 @@ int main(int argc, char ** argv)
     double d5 = 0.32;
     double d7 = 0.29;
 
-    /* User-assigned position of tool */
-    double p_T_data[] = {d3*cos(M_PI_4) + d5 + d7*cos(M_PI_4), 
-                         0, 
-                         d1 + d3*cos(M_PI_4) - d7*cos(M_PI_4)};
+    // /* User-assigned position of tool */
+    // double p_T_data[] = {d3*cos(M_PI_4) + d5 + d7*cos(M_PI_4), 
+    //                      0, 
+    //                      d1 + d3*cos(M_PI_4) - d7*cos(M_PI_4)};
 
-    /* User-assigned orientation/rotation of tool */
-    // double angle = M_PI / 2;
-    double angle = M_PI*3/4;
-    struct amino::YAngle y_angle{angle};
-    struct amino::Quat qu_T{y_angle};
+    // /* User-assigned orientation/rotation of tool */
+    // // double angle = M_PI / 2;
+    // double angle = M_PI*3/4;
+    // struct amino::YAngle y_angle{angle};
+    // struct amino::Quat qu_T{y_angle};
 
-    /* Additional parameters*/
-    double elbow_sign_param = 1; // either 1 or -1
-    double elbow_ang_param = 0; // from -pi to pi
-    double arm_sign_param = 1; // either 1 or -1
-    double wrist_sign_param = 1; // either 1 or -1
+    // /* Additional parameters*/
+    // double elbow_sign_param = 1; // either 1 or -1
+    // double elbow_ang_param = 0; // from -pi to pi
+    // double arm_sign_param = 1; // either 1 or -1
+    // double wrist_sign_param = 1; // either 1 or -1
 
-    /* Joint limits */
+
+    /* Create scene graph for Schunk arm */
+    // Create scene graph
+    struct aa_rx_sg *sg = aa_rx_sg_create();
+    const char* scene_name = "schunk";
+    const char* path = "/home/billhuynh-dyalab/git/domains/build/schunk/libschunk.so";
+    aa_rx_dl_sg_at(path, scene_name, sg, "");
+    assert(sg);
+
+    // Initialize scene graph internal structures
+    int r = aa_rx_sg_init(sg); 
+    assert(0 == r);
+
+    // Center configurations 
+    size_t m = aa_rx_sg_config_count(sg);
+    double q[m];
+    for(size_t i = 0; i < m; i ++ ) {
+        double min=0, max=0;
+        aa_rx_sg_get_limit_pos(sg, (aa_rx_config_id)i, &min, &max);
+        q[i] = (max + min)/2;
+    }
+    // q[1] = M_PI_4; // test with joint 2 at a non-zero angle
+
+    // Set up window
+    struct aa_rx_win *win = 
+        aa_rx_win_default_create("Scenegraph win test", SCREEN_WIDTH, SCREEN_HEIGHT);
+    aa_rx_win_set_sg(win, sg); // set the scenegraph for the window
+    aa_rx_win_set_config(win, m, q);
+
+    // struct aa_gl_globals *globals = aa_rx_win_gl_globals(win);
+    // int visual = 1;
+    // int collision = 0;
+    // aa_gl_globals_set_show_visual(globals, visual);
+    // aa_gl_globals_set_show_collision(globals, collision);
+
+    aa_rx_win_run(); 
+
+
+    // aa_rx_fk_malloc(sg)
+    // aa_rx_fk_all(struct aa_rx_fk *fk, const struct aa_dvec *q)
+
+    /* Joint limits, here specifically for Schunk arm */
     double joint_limits[14] = {-3.12159, 3.12159, // {lower_limit_1, upper_limit_1, lower_limit_2, ...}
                                -2.12, 2.12,
                                -3.12159, 3.12159,
                                -2.16, 2.16,
                                -3.12159, 3.12159,
                                -2.07, 2.07,
-                               -2.94, 2.94}; 
+                               -2.94, 2.94};  
 
     /* Call ik function */
-    ik7dof(d1,
-           d3,
-           d5,
-           d7, 
-           p_T_data, 
-           qu_T, 
-           elbow_sign_param, 
-           elbow_ang_param, 
-           arm_sign_param, 
-           wrist_sign_param,
-           joint_limits);
+    // ik7dof(d1,
+    //        d3,
+    //        d5,
+    //        d7, 
+    //        p_T_data, 
+    //        qu_T, 
+    //        elbow_sign_param, 
+    //        elbow_ang_param, 
+    //        arm_sign_param, 
+    //        wrist_sign_param,
+    //        joint_limits);
 
-    // std::cout << "Got to the end of main()! Returning 0 next...\n\n";
+
+    /* Clean up scene graph and window structures */
+    // sleep(5);
+    aa_rx_sg_destroy(sg);
+    aa_rx_win_destroy(win);
+    // SDL_Quit();
+
+    std::cout << "Got to the end of main()! Returning 0 next...\n\n";
 
     return 0;
 }
