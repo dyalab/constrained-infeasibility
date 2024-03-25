@@ -4,6 +4,8 @@
 #include <amino/rx/scenegraph.h>
 #include <amino/rx/scene_plugin.h>
 #include <amino/rx/scene_win.h>
+#include <amino/rx/scene_fk.h>
+// #include <amino/rx/scene_sdl.h>
 // #include "amino/rx/scene_gl.h"
 // #include "amino/rx/scene_geom.h"
 #include <cmath>
@@ -482,10 +484,10 @@ int main(int argc, char ** argv)
     Application for 7-DOF Redundant Manipulator" - M. Gong et al.*/
 
     /* See Figure 1 in M. Gong et al. for clarification on the DH parameters below*/
-    double d1 = 0.381; // meter. These dimensions are for the Schunk arm
-    double d3 = 0.33;
-    double d5 = 0.32;
-    double d7 = 0.29;
+    // double d1 = 0.381; // meter. These dimensions are for the Schunk arm
+    // double d3 = 0.33;
+    // double d5 = 0.32;
+    // double d7 = 0.29;
 
     // /* User-assigned position of tool */
     // double p_T_data[] = {d3*cos(M_PI_4) + d5 + d7*cos(M_PI_4), 
@@ -509,7 +511,9 @@ int main(int argc, char ** argv)
     // Create scene graph
     struct aa_rx_sg *sg = aa_rx_sg_create();
     const char* scene_name = "schunk";
-    const char* path = "/home/billhuynh-dyalab/git/domains/build/schunk/libschunk.so";
+    // const char* path = "/home/billhuynh-dyalab/git/domains/build/schunk/libschunk.so";
+    // const char* path = "/home/billhuynh/git/domains/build/schunk/libschunk.so";
+    const char* path = "/home/billhuynh/git/constrained-infeasibility/utils/schunk-cylinder/libschunk.so";
     aa_rx_dl_sg_at(path, scene_name, sg, "");
     assert(sg);
 
@@ -517,33 +521,81 @@ int main(int argc, char ** argv)
     int r = aa_rx_sg_init(sg); 
     assert(0 == r);
 
-    // Center configurations 
-    size_t m = aa_rx_sg_config_count(sg);
-    double q[m];
-    for(size_t i = 0; i < m; i ++ ) {
-        double min=0, max=0;
-        aa_rx_sg_get_limit_pos(sg, (aa_rx_config_id)i, &min, &max);
-        q[i] = (max + min)/2;
+    // // Center configurations 
+    // size_t m = aa_rx_sg_config_count(sg);
+    // double q[m];
+    // for(size_t i = 0; i < m; i ++ ) {
+    //     double min=0, max=0;
+    //     aa_rx_sg_get_limit_pos(sg, (aa_rx_config_id)i, &min, &max);
+    //     q[i] = (max + min)/2;
+    // }
+    // // q[1] = M_PI_4; // test with joint 2 at a non-zero angle
+
+    // // Set up window
+    // struct aa_rx_win *win = 
+    //     aa_rx_win_default_create("Scenegraph win test", SCREEN_WIDTH, SCREEN_HEIGHT);
+    // aa_rx_win_set_sg(win, sg); // set the scenegraph for the window
+    // aa_rx_win_set_config(win, m, q);
+
+    // // struct aa_gl_globals *globals = aa_rx_win_gl_globals(win);
+    // // int visual = 1;
+    // // int collision = 0;
+    // // aa_gl_globals_set_show_visual(globals, visual);
+    // // aa_gl_globals_set_show_collision(globals, collision);
+
+    // aa_rx_win_run(); 
+
+
+    /* Find offsets between frames/joints */
+    struct aa_rx_fk *fk = aa_rx_fk_malloc(sg);
+    size_t frame_count = aa_rx_fk_cnt(fk);
+    std::cout << "Number of frames in FK: " << frame_count << "\n";
+    for( size_t i = 0; i < frame_count; i++ ) {
+        std::cout << (char*)aa_rx_sg_frame_name(sg,i) << "\n";
     }
-    // q[1] = M_PI_4; // test with joint 2 at a non-zero angle
 
-    // Set up window
-    struct aa_rx_win *win = 
-        aa_rx_win_default_create("Scenegraph win test", SCREEN_WIDTH, SCREEN_HEIGHT);
-    aa_rx_win_set_sg(win, sg); // set the scenegraph for the window
-    aa_rx_win_set_config(win, m, q);
+    std::cout << "\nTest:\n";
+    std::cout << (char*)aa_rx_sg_frame_name(sg,2) << "\n\n";
 
-    // struct aa_gl_globals *globals = aa_rx_win_gl_globals(win);
-    // int visual = 1;
-    // int collision = 0;
-    // aa_gl_globals_set_show_visual(globals, visual);
-    // aa_gl_globals_set_show_collision(globals, collision);
+    double zero_v_data[7] = {0}; // 7 instead of 13, not count fixed frames
+    struct aa_dvec zero_v = AA_DVEC_INIT(7, zero_v_data, 1);
+    aa_rx_fk_all(fk, &zero_v);
 
-    aa_rx_win_run(); 
+    // From base to joint 2
+    double temp_data[7];
+    aa_rx_fk_get_abs_qutr(fk, 3, temp_data);
+    // array_print(temp_data, 7);
+    double d1 = temp_data[6];
+    std::cout << "Offset from base to joint 2 = " << d1 << "\n\n";
+
+    // From joint 2 to joint 4
+    aa_rx_fk_get_abs_qutr(fk, 5, temp_data);
+    // array_print(temp_data, 7);
+    double d3 = temp_data[6] - d1;
+    std::cout << "Offset from joint 2 to 4 = " << d3 << "\n\n";
+
+    // From joint 4 to joint 6
+    aa_rx_fk_get_abs_qutr(fk, 7, temp_data);
+    // array_print(temp_data, 7);
+    double d5 = temp_data[6] - d1 - d3;
+    std::cout << "Offset from joint 4 to 6 = " << d5 << "\n\n";
+
+    // From joint 6 to ee
+    aa_rx_fk_get_abs_qutr(fk, 12, temp_data);
+    // array_print(temp_data, 7);
+    double d7 = temp_data[6] - d1 - d3 - d5;
+    std::cout << "Offset from joint 6 to end effector = " << d7 << "\n\n";
+
+    // // From joint 6 to ee, relative way
+    // aa_rx_fk_get_rel_qutr(fk, 10, 2, temp_data);
+    // array_print(temp_data, 7);
+    // d7 = temp_data[6];
+    // std::cout << "Offset from joint 6 to end effector = " << d7 << "\n\n";
 
 
-    // aa_rx_fk_malloc(sg)
-    // aa_rx_fk_all(struct aa_rx_fk *fk, const struct aa_dvec *q)
+    /* Sample 7 random joint angles */
+    /* CONTINUE HERE */
+
 
     /* Joint limits, here specifically for Schunk arm */
     double joint_limits[14] = {-3.12159, 3.12159, // {lower_limit_1, upper_limit_1, lower_limit_2, ...}
@@ -568,11 +620,11 @@ int main(int argc, char ** argv)
     //        joint_limits);
 
 
-    /* Clean up scene graph and window structures */
-    // sleep(5);
-    aa_rx_sg_destroy(sg);
-    aa_rx_win_destroy(win);
-    // SDL_Quit();
+    // /* Clean up allocated structures */
+    aa_rx_fk_destroy(fk);
+    // aa_rx_sg_destroy(sg);
+    // aa_rx_win_destroy(win);
+    // // SDL_Quit();
 
     std::cout << "Got to the end of main()! Returning 0 next...\n\n";
 
