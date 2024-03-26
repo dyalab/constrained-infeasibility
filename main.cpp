@@ -208,6 +208,8 @@ void ik7dof(const double &d1,
     array_print(v_SW.data, 3);
     double d_SW = aa_la_norm(3, v_SW.data);
     double difference = d_SW - (d_SE + d_EW);
+    std::cout << "Distance from S to W: " << d_SW << "\n";
+    std::cout << "d_SE + d_EW = " << d_SE + d_EW << "\n";
     if (difference >= -0.02 && difference <= 0) {
         std::cout << "WARNING: d_SW approximately equal d_SE + d_EW --> pose is near workspace limit!\n";
     } else if (difference > 0) {
@@ -624,35 +626,66 @@ int main(int argc, char ** argv)
     for (int i = 0; i < 1; i++) {
         /* Sample 7 random joint angles */
         randomize_config(config_data, joint_limits);
-        // array_print(config_data, 7);
+        std::cout << "Random joint angles:\n";
+        config_data[0] = 0;
+        config_data[1] = M_PI_4;
+        config_data[2] = 0;
+        config_data[3] = M_PI_4;
+        config_data[4] = 0;
+        config_data[5] = M_PI_4;
+        config_data[6] = 0;
+        array_print(config_data, 7);
         aa_dvec_view(&config_vec, 7, config_data, 1);
         aa_rx_fk_all(fk, &config_vec);
         aa_rx_fk_get_abs_qutr(fk, 12, temp_data); // get rot and trans of ee
-        array_print(temp_data, 7);
-        
-        /* User-assigned position of tool */
-        // double p_T_data[3];
-        // memcpy(p_T_data, temp_data+4*sizeof(double), 3*sizeof(double));
-        // array_print(p_T_data, 7);
+        // array_print(temp_data, 7);
+
+        // // Set configurations 
+        struct aa_rx_win *win = 
+            aa_rx_win_default_create("Scenegraph win test", SCREEN_WIDTH, SCREEN_HEIGHT);
+        aa_rx_win_set_sg(win, sg); // set the scenegraph for the window
+        aa_rx_win_set_config(win, 7, config_data);
+        aa_rx_win_run();
+
+        /* Given position of tool (randomized) */
+        double p_T_data[3];
+        memcpy(p_T_data, temp_data+4, 3*sizeof(double));
+        // array_print(p_T_data, 3);
+
+        /* Given orientation/rotation of tool (randomized) */
+        double qu_T_data[4];
+        memcpy(qu_T_data, temp_data, 4*sizeof(double));
+        // array_print(qu_T_data, 4);
+        struct amino::Quat qu_T{qu_T.from_quat(qu_T_data)};
+        // array_print(qu_T.data, 4);
+
+        /* Additional parameters */
+        double elbow_sign_param = 1; // either 1 or -1
+        double elbow_ang_param = 0; // from -pi to pi
+        double arm_sign_param = 1; // either 1 or -1
+        double wrist_sign_param = 1; // either 1 or -1
 
         /* Call ik function */
-        // ik7dof(d1,
-        //        d3,
-        //        d5,
-        //        d7, 
-        //        p_T_data, 
-        //        qu_T, 
-        //        elbow_sign_param, 
-        //        elbow_ang_param, 
-        //        arm_sign_param, 
-        //        wrist_sign_param,
-        //        joint_limits);
+        ik7dof(d1,
+               d3,
+               d5,
+               d7, 
+               p_T_data, 
+               qu_T, 
+               elbow_sign_param, 
+               elbow_ang_param, 
+               arm_sign_param, 
+               wrist_sign_param,
+               joint_limits);
+
+        /* Clean up allocated structures */
+        aa_rx_win_destroy(win);
     }
 
 
-    // /* Clean up allocated structures */
+    /* Clean up allocated structures */
     aa_rx_fk_destroy(fk);
-    // aa_rx_sg_destroy(sg);
+    aa_rx_sg_destroy(sg);
     // aa_rx_win_destroy(win);
     // // SDL_Quit();
 
