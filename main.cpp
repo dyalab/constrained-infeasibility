@@ -529,7 +529,8 @@ int main(int argc, char ** argv)
     const char* scene_name = "schunk";
     // const char* path = "/home/billhuynh-dyalab/git/domains/build/schunk/libschunk.so";
     // const char* path = "/home/billhuynh/git/domains/build/schunk/libschunk.so";
-    const char* path = "/home/billhuynh/git/constrained-infeasibility/utils/schunk-cylinder/libschunk.so";
+    const char* path = "/home/billhuynh-dyalab/git/constrained-infeasibility/utils/schunk-cylinder/libschunk.so";
+    // const char* path = "/home/billhuynh/git/constrained-infeasibility/utils/schunk-cylinder/libschunk.so";
     aa_rx_dl_sg_at(path, scene_name, sg, "");
     assert(sg);
 
@@ -629,6 +630,10 @@ int main(int argc, char ** argv)
         aa_rx_fk_get_abs_qutr(fk, 12, temp_data); // get rot and trans of ee
         array_print(temp_data, 7);
         
+        /* User-assigned position of tool */
+        // double p_T_data[3];
+        // memcpy(p_T_data, temp_data+4*sizeof(double), 3*sizeof(double));
+        // array_print(p_T_data, 7);
 
         /* Call ik function */
         // ik7dof(d1,

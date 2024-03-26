@@ -28,8 +28,8 @@ frame ft_sensor {
 frame robotiq_gripper {
     parent ft_sensor;
 	type fixed;
-    translation [0,0,0.1];
-	rpy [pi/2, 0, 0.46];
+    translation [-0.015, 0, 0.1];
+	rpy [pi/2, 0, pi/2];
 	geometry {
 		visual 1;
 		mesh "./Robotiq-85.dae";
@@ -42,7 +42,7 @@ frame robotiq_gripper {
 frame END_EFFECTOR_GRASP {
     parent robotiq_gripper;
     translation [ 0, 3*inch, 0.5*inch];
-    rpy [0, 0, pi/2];
+    rpy [0, 0, 0];
     # geometry {
     #          visual 1;
     #          shape box;
