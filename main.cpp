@@ -10,6 +10,7 @@
 // #include "amino/rx/scene_geom.h"
 #include <cmath>
 #include <unistd.h> 
+#include <random>
 
 void
 aafeq(const char *name, double a, double b, double tol)
@@ -85,6 +86,21 @@ check_joint_limits(double &q,
         std::cout << "ERROR: Joint " << joint_num << " cannot be within its limits"; 
         std::cout << ", for the given pose and parameters.\n\n";
         assert(q >= joint_limits[(joint_num-1)*2] && q <= joint_limits[(joint_num-1)*2+1]);
+    }
+}
+
+static void
+randomize_config(double config_data[7],
+                 const double joint_limits[14])
+{
+    std::random_device rd;
+    std::mt19937 gen(rd());  // here you could set the seed, but std::random_device already does that
+    for (int i = 0; i < 7; i++) {
+        double lower_lim = joint_limits[i*2];
+        double upper_lim = joint_limits[i*2+1];
+        std::uniform_real_distribution<double> dis1(lower_lim, upper_lim);
+        config_data[i] = dis1(gen);
+        // std::cout << "Joint " << i+1 << " = " << config_data[i] << "\n";
     }
 }
 
@@ -529,7 +545,7 @@ int main(int argc, char ** argv)
     //     aa_rx_sg_get_limit_pos(sg, (aa_rx_config_id)i, &min, &max);
     //     q[i] = (max + min)/2;
     // }
-    // // q[1] = M_PI_4; // test with joint 2 at a non-zero angle
+    // q[1] = 1; // test with joint 2 at a non-zero angle
 
     // // Set up window
     // struct aa_rx_win *win = 
@@ -557,9 +573,9 @@ int main(int argc, char ** argv)
     std::cout << "\nTest:\n";
     std::cout << (char*)aa_rx_sg_frame_name(sg,2) << "\n\n";
 
-    double zero_v_data[7] = {0}; // 7 instead of 13, not count fixed frames
-    struct aa_dvec zero_v = AA_DVEC_INIT(7, zero_v_data, 1);
-    aa_rx_fk_all(fk, &zero_v);
+    double config_data[7] = {0}; // 7 instead of 13, not count fixed frames
+    struct aa_dvec config_vec = AA_DVEC_INIT(7, config_data, 1);
+    aa_rx_fk_all(fk, &config_vec);
 
     // From base to joint 2
     double temp_data[7];
@@ -593,10 +609,6 @@ int main(int argc, char ** argv)
     // std::cout << "Offset from joint 6 to end effector = " << d7 << "\n\n";
 
 
-    /* Sample 7 random joint angles */
-    /* CONTINUE HERE */
-
-
     /* Joint limits, here specifically for Schunk arm */
     double joint_limits[14] = {-3.12159, 3.12159, // {lower_limit_1, upper_limit_1, lower_limit_2, ...}
                                -2.12, 2.12,
@@ -604,20 +616,33 @@ int main(int argc, char ** argv)
                                -2.16, 2.16,
                                -3.12159, 3.12159,
                                -2.07, 2.07,
-                               -2.94, 2.94};  
+                               -2.94, 2.94};
 
-    /* Call ik function */
-    // ik7dof(d1,
-    //        d3,
-    //        d5,
-    //        d7, 
-    //        p_T_data, 
-    //        qu_T, 
-    //        elbow_sign_param, 
-    //        elbow_ang_param, 
-    //        arm_sign_param, 
-    //        wrist_sign_param,
-    //        joint_limits);
+
+    /* Randomize joints, get Td from FK, run IK, compare, repeat */    
+    for (int i = 0; i < 1; i++) {
+        /* Sample 7 random joint angles */
+        randomize_config(config_data, joint_limits);
+        // array_print(config_data, 7);
+        aa_dvec_view(&config_vec, 7, config_data, 1);
+        aa_rx_fk_all(fk, &config_vec);
+        aa_rx_fk_get_abs_qutr(fk, 12, temp_data); // get rot and trans of ee
+        array_print(temp_data, 7);
+        
+
+        /* Call ik function */
+        // ik7dof(d1,
+        //        d3,
+        //        d5,
+        //        d7, 
+        //        p_T_data, 
+        //        qu_T, 
+        //        elbow_sign_param, 
+        //        elbow_ang_param, 
+        //        arm_sign_param, 
+        //        wrist_sign_param,
+        //        joint_limits);
+    }
 
 
     // /* Clean up allocated structures */
