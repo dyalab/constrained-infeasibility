@@ -110,7 +110,9 @@ static int SCREEN_HEIGHT = 600;
 
 /* ik7dof takes the DH parameter link lengths, desired position of tool,
    desired orientation of tool, and returns the joint angles needed */
-void ik7dof(const double &d1,
+void ik7dof(const struct aa_rx_fk *fk,
+            const struct aa_rx_sg *sg,
+            const double &d1,
             const double &d3,
             const double &d5,
             const double &d7,
@@ -194,11 +196,20 @@ void ik7dof(const double &d1,
 
     /* Equation 2 of M. Gong et al. */
     double temp_data[] = {0, 0, -d_WT};
+    // double temp_data[] = {0, -d_WT, 0.0023}; // found out that END_EFFECTOR_GRASP Z-axis is not aligned with world Z
     double p_W_data[3];
     qutr_T.transform(temp_data, p_W_data);
     struct amino::Vec3 p_W{p_W_data};
     std::cout << "Position of W:\n";
     array_print(p_W.data, 3);
+
+    // /* DEBUG: Second way of finding vector TW */
+    // aa_rx_frame_id frame_ee = aa_rx_sg_frame_id(sg, "END_EFFECTOR_GRASP");
+    // aa_rx_frame_id W_frame = aa_rx_sg_frame_id(sg, "robot_6_joint");
+    // double rel_TW_qv_data[7];
+    // aa_rx_fk_get_rel_qutr(fk, frame_ee, W_frame, rel_TW_qv_data);
+    // std::cout << "Quat-trans of frame W wrt frame T:\n";
+    // array_print(rel_TW_qv_data, 7);
 
     /* Check limit of d_SW */
     double v_SW_data[3];
@@ -572,35 +583,42 @@ int main(int argc, char ** argv)
     for( size_t i = 0; i < frame_count; i++ ) {
         std::cout << (char*)aa_rx_sg_frame_name(sg,i) << "\n";
     }
+    std::cout << "\n\n";
 
-    std::cout << "\nTest:\n";
-    std::cout << (char*)aa_rx_sg_frame_name(sg,2) << "\n\n";
+    // std::cout << "\nTest:\n";
+    // std::cout << (char*)aa_rx_sg_frame_name(sg,2) << "\n\n";
 
     double config_data[7] = {0}; // 7 instead of 13, not count fixed frames
     struct aa_dvec config_vec = AA_DVEC_INIT(7, config_data, 1);
     aa_rx_fk_all(fk, &config_vec);
 
     // From base to joint 2
+    aa_rx_frame_id frame_base = aa_rx_sg_frame_id(sg, "robot_podest_joint");
+    aa_rx_frame_id frame_2 = aa_rx_sg_frame_id(sg, "robot_2_joint");
     double temp_data[7];
-    aa_rx_fk_get_abs_qutr(fk, 3, temp_data);
+    aa_rx_fk_get_rel_qutr(fk, frame_base ,frame_2, temp_data);
     // array_print(temp_data, 7);
     double d1 = temp_data[6];
     std::cout << "Offset from base to joint 2 = " << d1 << "\n\n";
 
     // From joint 2 to joint 4
-    aa_rx_fk_get_abs_qutr(fk, 5, temp_data);
+    aa_rx_frame_id frame_4 = aa_rx_sg_frame_id(sg, "robot_4_joint");
+    aa_rx_fk_get_rel_qutr(fk, frame_2, frame_4, temp_data);
     // array_print(temp_data, 7);
-    double d3 = temp_data[6] - d1;
+    double d3 = temp_data[4]; // NOTE: offset from joint 2 to joint 4 is along joint 2's x-axis
     std::cout << "Offset from joint 2 to 4 = " << d3 << "\n\n";
 
     // From joint 4 to joint 6
-    aa_rx_fk_get_abs_qutr(fk, 7, temp_data);
+    aa_rx_frame_id frame_6 = aa_rx_sg_frame_id(sg, "robot_6_joint");
+    aa_rx_fk_get_abs_qutr(fk, frame_6, temp_data);
     // array_print(temp_data, 7);
     double d5 = temp_data[6] - d1 - d3;
     std::cout << "Offset from joint 4 to 6 = " << d5 << "\n\n";
 
     // From joint 6 to ee
-    aa_rx_fk_get_abs_qutr(fk, 12, temp_data);
+    // aa_rx_frame_id frame_ee = aa_rx_sg_frame_id(sg, "END_EFFECTOR_GRASP");
+    aa_rx_frame_id frame_ee = aa_rx_sg_frame_id(sg, "robot_ee_joint");
+    aa_rx_fk_get_abs_qutr(fk, frame_ee, temp_data);
     // array_print(temp_data, 7);
     double d7 = temp_data[6] - d1 - d3 - d5;
     std::cout << "Offset from joint 6 to end effector = " << d7 << "\n\n";
@@ -637,7 +655,7 @@ int main(int argc, char ** argv)
         array_print(config_data, 7);
         aa_dvec_view(&config_vec, 7, config_data, 1);
         aa_rx_fk_all(fk, &config_vec);
-        aa_rx_fk_get_abs_qutr(fk, 12, temp_data); // get rot and trans of ee
+        aa_rx_fk_get_abs_qutr(fk, frame_ee, temp_data); // get rot and trans of ee
         // array_print(temp_data, 7);
 
         // // Set configurations 
@@ -666,7 +684,9 @@ int main(int argc, char ** argv)
         double wrist_sign_param = 1; // either 1 or -1
 
         /* Call ik function */
-        ik7dof(d1,
+        ik7dof(fk,
+               sg,
+               d1,
                d3,
                d5,
                d7, 
