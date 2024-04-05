@@ -110,19 +110,19 @@ static int SCREEN_HEIGHT = 600;
 
 /* ik7dof takes the DH parameter link lengths, desired position of tool,
    desired orientation of tool, and returns the joint angles needed */
-void ik7dof(const struct aa_rx_fk *fk,
-            const struct aa_rx_sg *sg,
-            const double &d1,
-            const double &d3,
-            const double &d5,
-            const double &d7,
+void ik7dof(const struct aa_rx_sg *sg,
             const double p_T_data[3],
             const struct amino::Quat &qu_T,
             const double &elbow_sign_param,
             const double &elbow_ang_param,
             const double &arm_sign_param,
             const double &wrist_sign_param,
-            const double joint_limits[14]) 
+            const double joint_limits[14],
+            const char *fr_name_base,
+            const char *fr_name_2,
+            const char *fr_name_4,
+            const char *fr_name_6,
+            const char *fr_name_ee) 
 {
     std::cout << "Got into ik7dof() successfully!\n\n";
 
@@ -156,24 +156,52 @@ void ik7dof(const struct aa_rx_fk *fk,
         assert(abs_val_3 - 1 == 0);
     }
 
-    /* See Figure 1 in M. Gong et al. for clarification on the DH parameters */
-    double alpha1 = -M_PI_2; // radians
-    double alpha2 = M_PI_2;
-    double alpha3 = -M_PI_2;
-    double alpha4 = M_PI_2;
-    double alpha5 = -M_PI_2;
-    double alpha6 = M_PI_2;
-    double alpha7 = 0;
-    double a1 = 0; // meter
-    double a2 = 0;
-    double a3 = 0;
-    double a4 = 0;
-    double a5 = 0;
-    double a6 = 0;
-    double a7 = 0;
-    double d2 = 0;
-    double d4 = 0;
-    double d6 = 0;
+
+    /* Find offsets between frames/joints */
+    struct aa_rx_fk *fk = aa_rx_fk_malloc(sg);
+    double config_data[7] = {0}; // 7 instead of 13, not count fixed frames. Set all to 0
+    struct aa_dvec config_vec = AA_DVEC_INIT(7, config_data, 1);
+    aa_rx_fk_all(fk, &config_vec);
+
+    // From base to joint 2
+    aa_rx_frame_id frame_base = aa_rx_sg_frame_id(sg, fr_name_base);
+    aa_rx_frame_id frame_2 = aa_rx_sg_frame_id(sg, fr_name_2);
+    double qutr_zero_data[7];
+    aa_rx_fk_get_rel_qutr(fk, frame_base ,frame_2, qutr_zero_data);
+    // array_print(qutr_zero_data, 7);
+    double d1 = qutr_zero_data[6];
+    std::cout << "Offset from base to joint 2 = " << d1 << "\n\n";
+
+    // From joint 2 to joint 4
+    aa_rx_frame_id frame_4 = aa_rx_sg_frame_id(sg, fr_name_4);
+    aa_rx_fk_get_rel_qutr(fk, frame_2, frame_4, qutr_zero_data);
+    // array_print(qutr_zero_data, 7);
+    double d3 = qutr_zero_data[4]; // NOTE: offset from joint 2 to joint 4 is along joint 2's x-axis
+    std::cout << "Offset from joint 2 to 4 = " << d3 << "\n\n";
+
+    // From joint 4 to joint 6
+    aa_rx_frame_id frame_6 = aa_rx_sg_frame_id(sg, fr_name_6);
+    aa_rx_fk_get_abs_qutr(fk, frame_6, qutr_zero_data);
+    // array_print(qutr_zero_data, 7);
+    double d5 = qutr_zero_data[6] - d1 - d3;
+    std::cout << "Offset from joint 4 to 6 = " << d5 << "\n\n";
+
+    // From joint 6 to ee
+    // aa_rx_frame_id frame_ee = aa_rx_sg_frame_id(sg, "END_EFFECTOR_GRASP");
+    aa_rx_frame_id frame_ee = aa_rx_sg_frame_id(sg, fr_name_ee);
+    aa_rx_fk_get_abs_qutr(fk, frame_ee, qutr_zero_data);
+    // array_print(qutr_zero_data, 7);
+    double d7 = qutr_zero_data[6] - d1 - d3 - d5;
+    std::cout << "Offset from joint 6 to end effector = " << d7 << "\n\n";
+
+    // // From joint 6 to ee, relative way
+    // aa_rx_fk_get_rel_qutr(fk, 10, 2, qutr_zero_data);
+    // array_print(qutr_zero_data, 7);
+    // d7 = qutr_zero_data[6];
+    // std::cout << "Offset from joint 6 to end effector = " << d7 << "\n\n";
+
+
+    /* Other names for the offsets */
     double d_BS = d1; // B=base, S=shoulder, E=elbow, W=wrist, T=tool
     double d_SE = d3;
     double d_EW = d5;
@@ -195,17 +223,17 @@ void ik7dof(const struct aa_rx_fk *fk,
     struct amino::QuatTran qutr_T{qu_T, p_T};
 
     /* Equation 2 of M. Gong et al. */
-    double temp_data[] = {0, 0, -d_WT};
-    // double temp_data[] = {0, -d_WT, 0.0023}; // found out that END_EFFECTOR_GRASP Z-axis is not aligned with world Z
+    double W_vec_data[] = {0, 0, -d_WT};
+    // double W_vec_data[] = {0, -d_WT, 0.0023}; // found out that END_EFFECTOR_GRASP Z-axis is not aligned with world Z
     double p_W_data[3];
-    qutr_T.transform(temp_data, p_W_data);
+    qutr_T.transform(W_vec_data, p_W_data);
     struct amino::Vec3 p_W{p_W_data};
     std::cout << "Position of W:\n";
     array_print(p_W.data, 3);
 
     // /* DEBUG: Second way of finding vector TW */
     // aa_rx_frame_id frame_ee = aa_rx_sg_frame_id(sg, "END_EFFECTOR_GRASP");
-    // aa_rx_frame_id W_frame = aa_rx_sg_frame_id(sg, "robot_6_joint");
+    // aa_rx_frame_id W_frame = aa_rx_sg_frame_id(sg, fr_name_6);
     // double rel_TW_qv_data[7];
     // aa_rx_fk_get_rel_qutr(fk, frame_ee, W_frame, rel_TW_qv_data);
     // std::cout << "Quat-trans of frame W wrt frame T:\n";
@@ -231,9 +259,6 @@ void ik7dof(const struct aa_rx_fk *fk,
     /* Find joint 4 */
     double cos_SEW  = (pow(d_SE,2)+pow(d_EW,2)-pow(d_SW,2)) / (2*d_SE*d_EW);
     double q4 = elbow_sign_param * (M_PI - acos(cos_SEW));
-    std::cout << "Joint q4 before limit check = " << q4 << "\n";
-    check_joint_limits(q4, joint_limits, 4);
-    std::cout << "Joint q4 after limit check = " << q4 << "\n\n";
 
 
     /* Columns for coordinate system sigma-D when psi (elbow self-motion angle) = 0 */
@@ -276,14 +301,14 @@ void ik7dof(const struct aa_rx_fk *fk,
     // struct amino::Quat qu_SW_psi{axang_SW_psi}; // aa_tf_quat
     // double qu_sigma_D_data_1[4];
     // aa_tf_qmulnorm(qu_SW_psi.data, qu_sigma_D_psi_0.data, qu_sigma_D_data_1); // with angle-axis, order of matmul not important
-    // std::cout << "Checking 1st way result:\n";
+    // std::cout << "\nChecking 1st way result:\n";
     // array_print(qu_sigma_D_data_1, 4);
     /* Another way */
     struct amino::XAngle x_angle_psi{elbow_ang_param}; 
     struct amino::Quat qu_x_psi{x_angle_psi}; // aa_tf_quat
     double qu_sigma_D_data_2[4];
     aa_tf_qmulnorm(qu_sigma_D_psi_0.data, qu_x_psi.data, qu_sigma_D_data_2);
-    std::cout << "Checking 2nd way result for sigma_D quaternion:\n";
+    std::cout << "\nChecking 2nd way result for sigma_D quaternion:\n";
     array_print(qu_sigma_D_data_2, 4);
 
 
@@ -344,21 +369,12 @@ void ik7dof(const struct aa_rx_fk *fk,
 
     /* Calculate joint 2 */
     double q2 = arm_sign_param * acos(R_S_data[8]);
-    std::cout << "Joint q2 before limit check = " << q2 << "\n";
-    check_joint_limits(q2, joint_limits, 2);
-    std::cout << "Joint q2 after limit check = " << q2 << "\n\n";
 
     /* Calculate joint 1*/
     double q1 = atan2( arm_sign_param*R_S_data[7] , arm_sign_param*R_S_data[6] );
-    std::cout << "Joint q1 before limit check = " << q1 << "\n";
-    check_joint_limits(q1, joint_limits, 1);
-    std::cout << "Joint q1 after limit check = " << q1 << "\n\n";
 
     /* Calculate joint 3*/
     double q3 = atan2( arm_sign_param*R_S_data[5] , -arm_sign_param*R_S_data[2] );
-    std::cout << "Joint q3 before limit check = " << q3 << "\n";
-    check_joint_limits(q3, joint_limits, 3);
-    std::cout << "Joint q3 after limit check = " << q3 << "\n\n";
 
 
     /* Find rotation of last three joints (5, 6, 7) combined, qu_W */
@@ -384,125 +400,82 @@ void ik7dof(const struct aa_rx_fk *fk,
 
     /* Calculate joint 6 */
     double q6 = wrist_sign_param * acos(R_W_data[8]);
+
+    /* Calculate joint 5 */
+    double q5 = atan2( wrist_sign_param*R_W_data[7] , wrist_sign_param*R_W_data[6] );
+
+    /* Calculate joint 7 */
+    double q7 = atan2( wrist_sign_param*R_W_data[5] , -wrist_sign_param*R_W_data[2] );
+
+
+    /* Joint limit checks */
+    std::cout << "Joint q4 before limit check = " << q4 << "\n";
+    check_joint_limits(q4, joint_limits, 4);
+    std::cout << "Joint q4 after limit check = " << q4 << "\n\n";
+
+    std::cout << "Joint q2 before limit check = " << q2 << "\n";
+    check_joint_limits(q2, joint_limits, 2);
+    std::cout << "Joint q2 after limit check = " << q2 << "\n\n";
+
+    std::cout << "Joint q1 before limit check = " << q1 << "\n";
+    check_joint_limits(q1, joint_limits, 1);
+    std::cout << "Joint q1 after limit check = " << q1 << "\n\n";
+
+    std::cout << "Joint q3 before limit check = " << q3 << "\n";
+    check_joint_limits(q3, joint_limits, 3);
+    std::cout << "Joint q3 after limit check = " << q3 << "\n\n";
+
     std::cout << "Joint q6 before limit check = " << q6 << "\n";
     check_joint_limits(q6, joint_limits, 6);
     std::cout << "Joint q6 after limit check = " << q6 << "\n\n";
 
-    /* Calculate joint 5 */
-    double q5 = atan2( wrist_sign_param*R_W_data[7] , wrist_sign_param*R_W_data[6] );
     std::cout << "Joint q5 before limit check = " << q5 << "\n";
     check_joint_limits(q5, joint_limits, 5);
     std::cout << "Joint q5 after limit check = " << q5 << "\n\n";
 
-    /* Calculate joint 7 */
-    double q7 = atan2( wrist_sign_param*R_W_data[5] , -wrist_sign_param*R_W_data[2] );
     std::cout << "Joint q7 before limit check = " << q7 << "\n";
     check_joint_limits(q7, joint_limits, 7);
     std::cout << "Joint q7 after limit check = " << q7 << "\n\n";
-    // q7 = 0;
-
-
-    // /* Check with forward kinematics, using modified (proximal) DH per M. Gong et al. */
-    // double T_0_1[12];
-    // aa_tf_dhprox2tfmat(0, 0, d1, q1, T_0_1);
-    // double T_1_2[12];
-    // aa_tf_dhprox2tfmat(alpha1, a1, d2, q2, T_1_2);
-    // double T_2_3[12];
-    // aa_tf_dhprox2tfmat(alpha2, a2, d3, q3, T_2_3);
-    // double T_3_4[12];
-    // aa_tf_dhprox2tfmat(alpha3, a3, d4, q4, T_3_4);
-    // double T_4_5[12];
-    // aa_tf_dhprox2tfmat(alpha4, a4, d5, q5, T_4_5);
-    // double T_5_6[12];
-    // aa_tf_dhprox2tfmat(alpha5, a5, d6, q6, T_5_6);
-    // double T_6_7[12];
-    // aa_tf_dhprox2tfmat(alpha6, a6, d7, q7, T_6_7);   
-    // double T_0_2[12];  
-    // aa_tf_12chain(T_0_1, T_1_2, T_0_2);
-    // double T_0_3[12];  
-    // aa_tf_12chain(T_0_2, T_2_3, T_0_3);
-    // double T_0_4[12];  
-    // aa_tf_12chain(T_0_3, T_3_4, T_0_4);
-    // double T_0_5[12];  
-    // aa_tf_12chain(T_0_4, T_4_5, T_0_5);
-    // double T_0_6[12];  
-    // aa_tf_12chain(T_0_5, T_5_6, T_0_6);
-    // double T_0_7[12];  
-    // aa_tf_12chain(T_0_6, T_6_7, T_0_7);
-
-    // std::cout << "Transf matrix from result:\n";
-    // mat_print_pretty(T_0_7, 3, 4);
-
-    // double T_0_7_given[12];
-    // aa_tf_qv2tfmat(qu_T.data, p_T_data, T_0_7_given);
-    // std::cout << "Transf matrix given:\n";
-    // mat_print_raw(T_0_7_given, 3, 4);
-
-    // // struct aa_dmat T_result = AA_DMAT_INIT(3, 4, T_0_7, 3);
-    // // struct aa_dmat T_given = AA_DMAT_INIT(3, 4, T_0_7_given, 3);
-    // admeq( "result T == given T", T_0_7, T_0_7_given, AA_EPSILON, 12 );
-
+    
 
     /* Check with forward kinematics, using modified (proximal) DH per M. Gong et al. */
-    double qu_0_1[4];
-    double v_0_1[3];
-    aa_tf_dhprox2qv(0, 0, d1, q1, qu_0_1, v_0_1);
-    double qu_1_2[4];
-    double v_1_2[3];
-    aa_tf_dhprox2qv(alpha1, a1, d2, q2, qu_1_2, v_1_2);
-    double qu_2_3[4];
-    double v_2_3[3];
-    aa_tf_dhprox2qv(alpha2, a2, d3, q3, qu_2_3, v_2_3);
-    double qu_3_4[4];
-    double v_3_4[3];
-    aa_tf_dhprox2qv(alpha3, a3, d4, q4, qu_3_4, v_3_4);
-    double qu_4_5[4];
-    double v_4_5[3];
-    aa_tf_dhprox2qv(alpha4, a4, d5, q5, qu_4_5, v_4_5);
-    double qu_5_6[4];
-    double v_5_6[3];
-    aa_tf_dhprox2qv(alpha5, a5, d6, q6, qu_5_6, v_5_6);
-    double qu_6_7[4];
-    double v_6_7[3];
-    aa_tf_dhprox2qv(alpha6, a6, d7, q7, qu_6_7, v_6_7);
-
-    double qu_0_2[4];
-    double v_0_2[3];
-    aa_tf_qv_chain(qu_0_1, v_0_1, qu_1_2, v_1_2, qu_0_2, v_0_2);
-    double qu_0_3[4];
-    double v_0_3[3];
-    aa_tf_qv_chain(qu_0_2, v_0_2, qu_2_3, v_2_3, qu_0_3, v_0_3);
-    double qu_0_4[4];
-    double v_0_4[3];
-    aa_tf_qv_chain(qu_0_3, v_0_3, qu_3_4, v_3_4, qu_0_4, v_0_4);
-    double qu_0_5[4];
-    double v_0_5[3];
-    aa_tf_qv_chain(qu_0_4, v_0_4, qu_4_5, v_4_5, qu_0_5, v_0_5);
-    double qu_0_6[4];
-    double v_0_6[3];
-    aa_tf_qv_chain(qu_0_5, v_0_5, qu_5_6, v_5_6, qu_0_6, v_0_6);
-    double qu_0_7[4];
-    double v_0_7[3];
-    aa_tf_qv_chain(qu_0_6, v_0_6, qu_6_7, v_6_7, qu_0_7, v_0_7);
-
-    double T_0_7[12];
-    aa_tf_qv2tfmat(qu_0_7, v_0_7, T_0_7);
-    std::cout << "Transf matrix from result:\n";
-    mat_print_pretty(T_0_7, 3, 4);
-
+    // Given
     double T_0_7_given[12];
     aa_tf_qv2tfmat(qu_T.data, p_T_data, T_0_7_given);
-    std::cout << "Transf matrix given:\n";
+    std::cout << "End effector transf matrix given:\n";
     mat_print_raw(T_0_7_given, 3, 4);
+    // Calculated
+    double config_data_res[7] = {q1, q2, q3, q4, q5, q6, q7}; // 7 instead of 13, not count fixed frames
+    struct aa_dvec config_vec_res = AA_DVEC_INIT(7, config_data_res, 1);
+    aa_rx_fk_all(fk, &config_vec_res);
+    double qv_0_7_res[7];
+    aa_rx_fk_get_abs_qutr(fk, frame_ee, qv_0_7_res);
+    double p_0_7_res[3];
+    memcpy(p_0_7_res, qv_0_7_res+4, 3*sizeof(double));
+    double qu_0_7_res[4];
+    memcpy(qu_0_7_res, qv_0_7_res, 4*sizeof(double));
+    double T_0_7_res[12];
+    aa_tf_qv2tfmat(qu_0_7_res, p_0_7_res, T_0_7_res);
+    std::cout << "End effector transf matrix from result:\n";
+    mat_print_pretty(T_0_7_res, 3, 4);
 
-    // struct aa_dmat T_result = AA_DMAT_INIT(3, 4, T_0_7, 3);
+    // struct aa_dmat T_result = AA_DMAT_INIT(3, 4, T_0_7_res, 3);
     // struct aa_dmat T_given = AA_DMAT_INIT(3, 4, T_0_7_given, 3);
-    admeq( "result T == given T", T_0_7, T_0_7_given, AA_EPSILON, 12 );
+    admeq( "result T == given T", T_0_7_res, T_0_7_given, AA_EPSILON, 12 );
 
+
+    /* Clean up allocated structures */
+    aa_rx_fk_destroy(fk);
+    // aa_rx_sg_destroy(sg);
+    // aa_rx_win_destroy(win);
 
     std::cout << "Got to the end of ik7dof()!\n\n";
     return;
 }
+
+
+
+
 
 
 int main(int argc, char ** argv) 
@@ -511,30 +484,6 @@ int main(int argc, char ** argv)
 
     /* Following  "Analytical Inverse Kinematics and Self-Motion 
     Application for 7-DOF Redundant Manipulator" - M. Gong et al.*/
-
-    /* See Figure 1 in M. Gong et al. for clarification on the DH parameters below*/
-    // double d1 = 0.381; // meter. These dimensions are for the Schunk arm
-    // double d3 = 0.33;
-    // double d5 = 0.32;
-    // double d7 = 0.29;
-
-    // /* User-assigned position of tool */
-    // double p_T_data[] = {d3*cos(M_PI_4) + d5 + d7*cos(M_PI_4), 
-    //                      0, 
-    //                      d1 + d3*cos(M_PI_4) - d7*cos(M_PI_4)};
-
-    // /* User-assigned orientation/rotation of tool */
-    // // double angle = M_PI / 2;
-    // double angle = M_PI*3/4;
-    // struct amino::YAngle y_angle{angle};
-    // struct amino::Quat qu_T{y_angle};
-
-    // /* Additional parameters*/
-    // double elbow_sign_param = 1; // either 1 or -1
-    // double elbow_ang_param = 0; // from -pi to pi
-    // double arm_sign_param = 1; // either 1 or -1
-    // double wrist_sign_param = 1; // either 1 or -1
-
 
     /* Create scene graph for Schunk arm */
     // Create scene graph
@@ -551,84 +500,10 @@ int main(int argc, char ** argv)
     int r = aa_rx_sg_init(sg); 
     assert(0 == r);
 
-    // // Center configurations 
-    // size_t m = aa_rx_sg_config_count(sg);
-    // double q[m];
-    // for(size_t i = 0; i < m; i ++ ) {
-    //     double min=0, max=0;
-    //     aa_rx_sg_get_limit_pos(sg, (aa_rx_config_id)i, &min, &max);
-    //     q[i] = (max + min)/2;
-    // }
-    // q[1] = 1; // test with joint 2 at a non-zero angle
-
-    // // Set up window
-    // struct aa_rx_win *win = 
-    //     aa_rx_win_default_create("Scenegraph win test", SCREEN_WIDTH, SCREEN_HEIGHT);
-    // aa_rx_win_set_sg(win, sg); // set the scenegraph for the window
-    // aa_rx_win_set_config(win, m, q);
-
-    // // struct aa_gl_globals *globals = aa_rx_win_gl_globals(win);
-    // // int visual = 1;
-    // // int collision = 0;
-    // // aa_gl_globals_set_show_visual(globals, visual);
-    // // aa_gl_globals_set_show_collision(globals, collision);
-
-    // aa_rx_win_run(); 
-
-
-    /* Find offsets between frames/joints */
     struct aa_rx_fk *fk = aa_rx_fk_malloc(sg);
-    size_t frame_count = aa_rx_fk_cnt(fk);
-    std::cout << "Number of frames in FK: " << frame_count << "\n";
-    for( size_t i = 0; i < frame_count; i++ ) {
-        std::cout << (char*)aa_rx_sg_frame_name(sg,i) << "\n";
-    }
-    std::cout << "\n\n";
 
-    // std::cout << "\nTest:\n";
-    // std::cout << (char*)aa_rx_sg_frame_name(sg,2) << "\n\n";
-
-    double config_data[7] = {0}; // 7 instead of 13, not count fixed frames
+    double config_data[7] = {0}; // 7 instead of 13, not count fixed frames. Set all to 0
     struct aa_dvec config_vec = AA_DVEC_INIT(7, config_data, 1);
-    aa_rx_fk_all(fk, &config_vec);
-
-    // From base to joint 2
-    aa_rx_frame_id frame_base = aa_rx_sg_frame_id(sg, "robot_podest_joint");
-    aa_rx_frame_id frame_2 = aa_rx_sg_frame_id(sg, "robot_2_joint");
-    double temp_data[7];
-    aa_rx_fk_get_rel_qutr(fk, frame_base ,frame_2, temp_data);
-    // array_print(temp_data, 7);
-    double d1 = temp_data[6];
-    std::cout << "Offset from base to joint 2 = " << d1 << "\n\n";
-
-    // From joint 2 to joint 4
-    aa_rx_frame_id frame_4 = aa_rx_sg_frame_id(sg, "robot_4_joint");
-    aa_rx_fk_get_rel_qutr(fk, frame_2, frame_4, temp_data);
-    // array_print(temp_data, 7);
-    double d3 = temp_data[4]; // NOTE: offset from joint 2 to joint 4 is along joint 2's x-axis
-    std::cout << "Offset from joint 2 to 4 = " << d3 << "\n\n";
-
-    // From joint 4 to joint 6
-    aa_rx_frame_id frame_6 = aa_rx_sg_frame_id(sg, "robot_6_joint");
-    aa_rx_fk_get_abs_qutr(fk, frame_6, temp_data);
-    // array_print(temp_data, 7);
-    double d5 = temp_data[6] - d1 - d3;
-    std::cout << "Offset from joint 4 to 6 = " << d5 << "\n\n";
-
-    // From joint 6 to ee
-    // aa_rx_frame_id frame_ee = aa_rx_sg_frame_id(sg, "END_EFFECTOR_GRASP");
-    aa_rx_frame_id frame_ee = aa_rx_sg_frame_id(sg, "robot_ee_joint");
-    aa_rx_fk_get_abs_qutr(fk, frame_ee, temp_data);
-    // array_print(temp_data, 7);
-    double d7 = temp_data[6] - d1 - d3 - d5;
-    std::cout << "Offset from joint 6 to end effector = " << d7 << "\n\n";
-
-    // // From joint 6 to ee, relative way
-    // aa_rx_fk_get_rel_qutr(fk, 10, 2, temp_data);
-    // array_print(temp_data, 7);
-    // d7 = temp_data[6];
-    // std::cout << "Offset from joint 6 to end effector = " << d7 << "\n\n";
-
 
     /* Joint limits, here specifically for Schunk arm */
     double joint_limits[14] = {-3.12159, 3.12159, // {lower_limit_1, upper_limit_1, lower_limit_2, ...}
@@ -639,24 +514,35 @@ int main(int argc, char ** argv)
                                -2.07, 2.07,
                                -2.94, 2.94};
 
+    /* User-defined frame names */
+    const char *fr_name_base = "robot_podest_joint";
+    const char *fr_name_2 = "robot_2_joint";
+    const char *fr_name_4 = "robot_4_joint";
+    const char *fr_name_6 = "robot_6_joint";
+    const char *fr_name_ee = "robot_ee_joint";
+
 
     /* Randomize joints, get Td from FK, run IK, compare, repeat */    
     for (int i = 0; i < 1; i++) {
         /* Sample 7 random joint angles */
         randomize_config(config_data, joint_limits);
-        std::cout << "Random joint angles:\n";
-        config_data[0] = 0;
+        std::cout << "Scene's joint angles:\n";
+
+        config_data[0] = 0; // Set to something known, for debug
         config_data[1] = M_PI_4;
         config_data[2] = 0;
         config_data[3] = M_PI_4;
         config_data[4] = 0;
         config_data[5] = M_PI_4;
         config_data[6] = 0;
+
         array_print(config_data, 7);
         aa_dvec_view(&config_vec, 7, config_data, 1);
         aa_rx_fk_all(fk, &config_vec);
-        aa_rx_fk_get_abs_qutr(fk, frame_ee, temp_data); // get rot and trans of ee
-        // array_print(temp_data, 7);
+        aa_rx_frame_id frame_ee = aa_rx_sg_frame_id(sg, fr_name_ee);
+        double qutr_data[7];
+        aa_rx_fk_get_abs_qutr(fk, frame_ee, qutr_data); // get rot and trans of ee
+        // array_print(qutr_data, 7);
 
         // // Set configurations 
         struct aa_rx_win *win = 
@@ -667,12 +553,12 @@ int main(int argc, char ** argv)
 
         /* Given position of tool (randomized) */
         double p_T_data[3];
-        memcpy(p_T_data, temp_data+4, 3*sizeof(double));
+        memcpy(p_T_data, qutr_data+4, 3*sizeof(double));
         // array_print(p_T_data, 3);
 
         /* Given orientation/rotation of tool (randomized) */
         double qu_T_data[4];
-        memcpy(qu_T_data, temp_data, 4*sizeof(double));
+        memcpy(qu_T_data, qutr_data, 4*sizeof(double));
         // array_print(qu_T_data, 4);
         struct amino::Quat qu_T{qu_T.from_quat(qu_T_data)};
         // array_print(qu_T.data, 4);
@@ -684,19 +570,19 @@ int main(int argc, char ** argv)
         double wrist_sign_param = 1; // either 1 or -1
 
         /* Call ik function */
-        ik7dof(fk,
-               sg,
-               d1,
-               d3,
-               d5,
-               d7, 
+        ik7dof(sg,
                p_T_data, 
                qu_T, 
                elbow_sign_param, 
                elbow_ang_param, 
                arm_sign_param, 
                wrist_sign_param,
-               joint_limits);
+               joint_limits,
+               fr_name_base,
+               fr_name_2,
+               fr_name_4,
+               fr_name_6,
+               fr_name_ee);
 
         /* Clean up allocated structures */
         aa_rx_win_destroy(win);
