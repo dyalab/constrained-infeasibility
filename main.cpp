@@ -11,6 +11,8 @@
 #include <cmath>
 #include <unistd.h> 
 #include <random>
+#include <vector>
+#include <array>
 
 void
 aafeq(const char *name, double a, double b, double tol)
@@ -113,10 +115,7 @@ static int SCREEN_HEIGHT = 600;
 void ik7dof(const struct aa_rx_sg *sg,
             const double p_T_data[3],
             const struct amino::Quat &qu_T,
-            const double &elbow_sign_param,
             const double &elbow_ang_param,
-            const double &arm_sign_param,
-            const double &wrist_sign_param,
             const double joint_limits[14],
             const char *fr_name_base,
             const char *fr_name_2,
@@ -129,31 +128,22 @@ void ik7dof(const struct aa_rx_sg *sg,
     /* Following  "Analytical Inverse Kinematics and Self-Motion 
     Application for 7-DOF Redundant Manipulator" - M. Gong et al.*/
 
-    /* Verifying input parameter of elbow joint sign */
-    double abs_val = fabs(elbow_sign_param);
-    if (abs_val - 1 != 0) {
-        std::cout << "ERROR: Elbow joint sign parameter needs to be either -1 or 1.\n\n";
-        assert(abs_val - 1 == 0);
-    }
+    /* Math arm is solved as a ZYZ-Y-ZYZ arm */
+
+    /* Initialize arrays of solutions */
+    double sol_1[7] = {-99};
+    double sol_2[7] = {-99};
+    double sol_3[7] = {-99};
+    double sol_4[7] = {-99};
+    double sol_5[7] = {-99};
+    double sol_6[7] = {-99};
+    double sol_7[7] = {-99};
+    double sol_8[7] = {-99};
 
     /* Verifying input parameter of elbow self motion angle*/
     if (elbow_ang_param < -M_PI || elbow_ang_param > M_PI) {
         std::cout << "ERROR: Elbow self-motion angle parameter needs to be from -pi to pi, inclusive.\n\n";
         assert(elbow_ang_param >= -M_PI && elbow_ang_param <= M_PI);
-    }
-
-    /* Verifying input parameter of arm sign */
-    double abs_val_2 = fabs(arm_sign_param);
-    if (abs_val_2 - 1 != 0) {
-        std::cout << "ERROR: Arm sign parameter needs to be either -1 or 1.\n\n";
-        assert(abs_val_2 - 1 == 0);
-    }
-
-    /* Verifying input parameter of wrist sign */
-    double abs_val_3 = fabs(wrist_sign_param);
-    if (abs_val_3 - 1 != 0) {
-        std::cout << "ERROR: Wrist sign parameter needs to be either -1 or 1.\n\n";
-        assert(abs_val_3 - 1 == 0);
     }
 
 
@@ -238,75 +228,79 @@ void ik7dof(const struct aa_rx_sg *sg,
 
     /* Find joint 4 */
     double cos_SEW  = (pow(d_SE,2)+pow(d_EW,2)-pow(d_SW,2)) / (2*d_SE*d_EW);
-    double q4 = elbow_sign_param * (M_PI - acos(cos_SEW));
+    double q4 = (M_PI - acos(cos_SEW));
+    sol_1[3] = q4;
+    sol_2[3] = q4;
+    sol_3[3] = q4;
+    sol_4[3] = q4;
+    sol_5[3] = -q4;
+    sol_6[3] = -q4;
+    sol_7[3] = -q4;
+    sol_8[3] = -q4;
 
 
-    // /* Columns for coordinate system sigma-D when psi (elbow self-motion angle) = 0 */
-    // double X_sigma_data[3];
-    // memcpy(X_sigma_data, v_SW_data, 3*sizeof(double));
-    // aa_la_normalize(3, X_sigma_data);
-    // // std::cout << "X_sigma_data:\n";
-    // // array_print(X_sigma_data, 3);
+    /* Columns for coordinate system sigma-D when psi (elbow self-motion angle) = 0 */
+    double X_sigma_data[3];
+    memcpy(X_sigma_data, v_SW_data, 3*sizeof(double));
+    aa_la_normalize(3, X_sigma_data);
 
-    // double Z_0_data[3] = {0, 0, 1};
-    // double Y_sigma_data[3];
-    // aa_la_cross(Z_0_data, X_sigma_data, Y_sigma_data);
-    // aa_la_normalize(3, Y_sigma_data);
-    // double temp = aa_la_norm(3, Y_sigma_data);
-    // if (temp <= AA_EPSILON) { // special case when X_sigma and Z_0 are parallel
-    //     double Y_0_data[3] = {0, 1, 0};
-    //     memcpy(Y_sigma_data, Y_0_data, 3*sizeof(double));
-    // }
-    // // std::cout << "Y_sigma_data:\n";
-    // // array_print(Y_sigma_data, 3);
+    double Z_0_data[3] = {0, 0, 1};
+    double Y_sigma_data[3];
+    aa_la_cross(Z_0_data, X_sigma_data, Y_sigma_data);
+    aa_la_normalize(3, Y_sigma_data);
+    double temp = aa_la_norm(3, Y_sigma_data);
+    if (temp <= AA_EPSILON) { // special case when X_sigma and Z_0 are parallel
+        double Y_0_data[3] = {0, 1, 0};
+        memcpy(Y_sigma_data, Y_0_data, 3*sizeof(double));
+    }
 
-    // double Z_sigma_data[3];
-    // aa_la_cross(X_sigma_data, Y_sigma_data, Z_sigma_data);
-    // aa_la_normalize(3, Z_sigma_data);
-    // // std::cout << "Z_sigma_data:\n";
-    // // array_print(Z_sigma_data, 3);
+    double Z_sigma_data[3];
+    aa_la_cross(X_sigma_data, Y_sigma_data, Z_sigma_data);
+    aa_la_normalize(3, Z_sigma_data);
 
-    // struct amino::RotMat R_sigma_D_psi_0{X_sigma_data[0], Y_sigma_data[0], Z_sigma_data[0],
-    //                                      X_sigma_data[1], Y_sigma_data[1], Z_sigma_data[1],
-    //                                      X_sigma_data[2], Y_sigma_data[2], Z_sigma_data[2]}; // aa_tf_rotmat
-    // struct amino::Quat qu_sigma_D_psi_0{R_sigma_D_psi_0}; // aa_tf_quat
+    struct amino::RotMat R_sigma_D_psi_0{X_sigma_data[0], Y_sigma_data[0], Z_sigma_data[0],
+                                         X_sigma_data[1], Y_sigma_data[1], Z_sigma_data[1],
+                                         X_sigma_data[2], Y_sigma_data[2], Z_sigma_data[2]}; // aa_tf_rotmat
+    struct amino::Quat qu_sigma_D_psi_0{R_sigma_D_psi_0}; // aa_tf_quat
 
 
-    // /* Find coordinate system sigma-D with given psi (elbow self-motion angle) */
-    // /* One way */
-    // // double v_SW_data_normed[3];
-    // // memcpy(v_SW_data_normed, v_SW_data, 3*sizeof(double));
-    // // aa_la_normalize(3, v_SW_data_normed);
-    // // struct amino::AxisAngle axang_SW_psi{v_SW_data_normed, elbow_ang_param}; // aa_tf_axang
-    // // struct amino::Quat qu_SW_psi{axang_SW_psi}; // aa_tf_quat
-    // // double qu_sigma_D_data_1[4];
-    // // aa_tf_qmulnorm(qu_SW_psi.data, qu_sigma_D_psi_0.data, qu_sigma_D_data_1); // with angle-axis, order of matmul not important
-    // // std::cout << "\nChecking 1st way result:\n";
-    // // array_print(qu_sigma_D_data_1, 4);
-    // /* Another way */
-    // struct amino::XAngle x_angle_psi{elbow_ang_param}; 
-    // struct amino::Quat qu_x_psi{x_angle_psi}; // aa_tf_quat
-    // double qu_sigma_D_data_2[4];
-    // aa_tf_qmulnorm(qu_sigma_D_psi_0.data, qu_x_psi.data, qu_sigma_D_data_2);
-    // std::cout << "\nChecking 2nd way result for sigma_D quaternion:\n";
-    // array_print(qu_sigma_D_data_2, 4);
+    /* Find coordinate system sigma-D with given psi (elbow self-motion angle) */
+    struct amino::XAngle x_angle_psi{elbow_ang_param}; 
+    struct amino::Quat qu_x_psi{x_angle_psi}; // aa_tf_quat
+    double qu_sigma_D_data[4];
+    aa_tf_qmulnorm(qu_sigma_D_psi_0.data, qu_x_psi.data, qu_sigma_D_data);
 
 
-    // /* Find coordinate system sigma-0 */
-    // double p_W_data_2[3] = {d_EW*sin(q4), 0, d_BS+d_SE+d_EW*cos(q4)};
-    // std::cout << "Position of W when calculating sigma_0:\n";
-    // array_print(p_W_data_2, 3);
+    /* Find coordinate system sigma-0 */
+    double sol_1_p_W_data_2[3] = {d_EW*sin(sol_1[3]), 0, d_BS+d_SE+d_EW*cos(sol_1[3])};
+    double sol_2_p_W_data_2[3] = {d_EW*sin(sol_2[3]), 0, d_BS+d_SE+d_EW*cos(sol_2[3])};
+    double sol_3_p_W_data_2[3] = {d_EW*sin(sol_3[3]), 0, d_BS+d_SE+d_EW*cos(sol_3[3])};
+    double sol_4_p_W_data_2[3] = {d_EW*sin(sol_4[3]), 0, d_BS+d_SE+d_EW*cos(sol_4[3])};
+    double sol_5_p_W_data_2[3] = {d_EW*sin(sol_5[3]), 0, d_BS+d_SE+d_EW*cos(sol_5[3])};
+    double sol_6_p_W_data_2[3] = {d_EW*sin(sol_6[3]), 0, d_BS+d_SE+d_EW*cos(sol_6[3])};
+    double sol_7_p_W_data_2[3] = {d_EW*sin(sol_7[3]), 0, d_BS+d_SE+d_EW*cos(sol_7[3])};
+    double sol_8_p_W_data_2[3] = {d_EW*sin(sol_8[3]), 0, d_BS+d_SE+d_EW*cos(sol_8[3])};
 
-    // double v_SW_data_2[3];
-    // aa_la_vsub(3, p_W_data_2, p_S.data, v_SW_data_2);
-    // std::cout << "Displacement from S to W when calculating sigma_0:\n";
-    // array_print(v_SW_data_2, 3);
+    double sol_1_v_SW_data_2[3];
+    aa_la_vsub(3, sol_1_p_W_data_2, p_S.data, sol_1_v_SW_data_2);
+    double sol_2_v_SW_data_2[3];
+    aa_la_vsub(3, sol_2_p_W_data_2, p_S.data, sol_2_v_SW_data_2);
+    double sol_3_v_SW_data_2[3];
+    aa_la_vsub(3, sol_3_p_W_data_2, p_S.data, sol_3_v_SW_data_2);
+    double sol_4_v_SW_data_2[3];
+    aa_la_vsub(3, sol_4_p_W_data_2, p_S.data, sol_4_v_SW_data_2);
+    double sol_5_v_SW_data_2[3];
+    aa_la_vsub(3, sol_5_p_W_data_2, p_S.data, sol_5_v_SW_data_2);
+    double sol_6_v_SW_data_2[3];
+    aa_la_vsub(3, sol_6_p_W_data_2, p_S.data, sol_6_v_SW_data_2);
+    double sol_7_v_SW_data_2[3];
+    aa_la_vsub(3, sol_7_p_W_data_2, p_S.data, sol_7_v_SW_data_2);
+    double sol_8_v_SW_data_2[3];
+    aa_la_vsub(3, sol_8_p_W_data_2, p_S.data, sol_8_v_SW_data_2);
 
-    // double X_sigma_data_2[3];
-    // memcpy(X_sigma_data_2, v_SW_data_2, 3*sizeof(double));
-    // aa_la_normalize(3, X_sigma_data_2);
-    // // std::cout << "X_sigma_data_2:\n";
-    // // array_print(X_sigma_data_2, 3);
+    double sol_1_X_sigma_data_2[3];
+    memcpy(sol_1_X_sigma_data_2, sol_1_v_SW_data_2, 3*sizeof(double));
+    aa_la_normalize(3, sol_1_X_sigma_data_2);
 
     // // double Z_0_data[3] = {0, 0, 1};
     // double Y_sigma_data_2[3];
@@ -540,19 +534,13 @@ int main(int argc, char ** argv)
         struct amino::Quat qu_T{qu_T.from_quat(qu_T_data)};
 
         /* Additional parameters */
-        double elbow_sign_param = 1; // either 1 or -1
         double elbow_ang_param = 0; // from -pi to pi
-        double arm_sign_param = 1; // either 1 or -1
-        double wrist_sign_param = 1; // either 1 or -1
 
         /* Call ik function */
         ik7dof(sg,
                p_T_data, 
-               qu_T, 
-               elbow_sign_param, 
+               qu_T,
                elbow_ang_param, 
-               arm_sign_param, 
-               wrist_sign_param,
                joint_limits,
                fr_name_base,
                fr_name_2,
