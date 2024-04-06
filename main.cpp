@@ -220,34 +220,25 @@ void ik7dof(const struct aa_rx_sg *sg,
     std::cout << "Position of W:\n";
     array_print(p_W.data, 3);
 
-    // // /* DEBUG: Second way of finding vector TW */
-    // // aa_rx_frame_id frame_ee = aa_rx_sg_frame_id(sg, "END_EFFECTOR_GRASP");
-    // // aa_rx_frame_id W_frame = aa_rx_sg_frame_id(sg, fr_name_6);
-    // // double rel_TW_qv_data[7];
-    // // aa_rx_fk_get_rel_qutr(fk, frame_ee, W_frame, rel_TW_qv_data);
-    // // std::cout << "Quat-trans of frame W wrt frame T:\n";
-    // // array_print(rel_TW_qv_data, 7);
+    /* Check limit of d_SW */
+    double v_SW_data[3];
+    aa_la_vsub(3, p_W.data, p_S.data, v_SW_data);
+    std::cout << "Displacement from S to W:\n";
+    array_print(v_SW_data, 3);
+    double d_SW = aa_la_norm(3, v_SW_data);
+    double difference = d_SW - (d_SE + d_EW);
+    std::cout << "Distance from S to W: " << d_SW << "\n";
+    std::cout << "d_SE + d_EW = " << d_SE + d_EW << "\n";
+    if (difference >= -0.02 && difference <= 0) {
+        std::cout << "WARNING: d_SW approximately equal d_SE + d_EW --> pose is near workspace limit!\n";
+    } else if (difference > 0) {
+        std::cout << "ERROR: d_SW > d_SE + d_EW\n";
+        assert(d_SW - (d_SE + d_EW) <= 0);
+    }
 
-    // /* Check limit of d_SW */
-    // double v_SW_data[3];
-    // aa_la_vsub(3, p_W.data, p_S.data, v_SW_data);
-    // struct amino::Vec3 v_SW{v_SW_data};
-    // std::cout << "Displacement from S to W:\n";
-    // array_print(v_SW.data, 3);
-    // double d_SW = aa_la_norm(3, v_SW.data);
-    // double difference = d_SW - (d_SE + d_EW);
-    // std::cout << "Distance from S to W: " << d_SW << "\n";
-    // std::cout << "d_SE + d_EW = " << d_SE + d_EW << "\n";
-    // if (difference >= -0.02 && difference <= 0) {
-    //     std::cout << "WARNING: d_SW approximately equal d_SE + d_EW --> pose is near workspace limit!\n";
-    // } else if (difference > 0) {
-    //     std::cout << "ERROR: d_SW > d_SE + d_EW\n";
-    //     assert(d_SW - (d_SE + d_EW) <= 0);
-    // }
-
-    // /* Find joint 4 */
-    // double cos_SEW  = (pow(d_SE,2)+pow(d_EW,2)-pow(d_SW,2)) / (2*d_SE*d_EW);
-    // double q4 = elbow_sign_param * (M_PI - acos(cos_SEW));
+    /* Find joint 4 */
+    double cos_SEW  = (pow(d_SE,2)+pow(d_EW,2)-pow(d_SW,2)) / (2*d_SE*d_EW);
+    double q4 = elbow_sign_param * (M_PI - acos(cos_SEW));
 
 
     // /* Columns for coordinate system sigma-D when psi (elbow self-motion angle) = 0 */
@@ -480,8 +471,8 @@ int main(int argc, char ** argv)
     const char* scene_name = "schunk";
     // const char* path = "/home/billhuynh-dyalab/git/domains/build/schunk/libschunk.so";
     // const char* path = "/home/billhuynh/git/domains/build/schunk/libschunk.so";
-    const char* path = "/home/billhuynh-dyalab/git/constrained-infeasibility/utils/schunk-cylinder/libschunk.so";
-    // const char* path = "/home/billhuynh/git/constrained-infeasibility/utils/schunk-cylinder/libschunk.so";
+    // const char* path = "/home/billhuynh-dyalab/git/constrained-infeasibility/utils/schunk-cylinder/libschunk.so";
+    const char* path = "/home/billhuynh/git/constrained-infeasibility/utils/schunk-cylinder/libschunk.so";
     aa_rx_dl_sg_at(path, scene_name, sg, "");
     assert(sg);
 
