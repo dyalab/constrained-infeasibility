@@ -131,14 +131,11 @@ void ik7dof(const struct aa_rx_sg *sg,
     /* Math arm is solved as a ZYZ-Y-ZYZ arm */
 
     /* Initialize arrays of solutions */
-    double sol_1[7] = {-99};
-    double sol_2[7] = {-99};
-    double sol_3[7] = {-99};
-    double sol_4[7] = {-99};
-    double sol_5[7] = {-99};
-    double sol_6[7] = {-99};
-    double sol_7[7] = {-99};
-    double sol_8[7] = {-99};
+    std::vector<std::array<double, 7>> sols;
+    std::array<double, 7> dummy_sol;
+    for (int i = 0; i < 7; i++) dummy_sol[i] = 99;
+    for (int i = 0; i < 8; i++) sols.push_back(dummy_sol);
+    
 
     /* Verifying input parameter of elbow self motion angle*/
     if (elbow_ang_param < -M_PI || elbow_ang_param > M_PI) {
@@ -228,15 +225,9 @@ void ik7dof(const struct aa_rx_sg *sg,
 
     /* Find joint 4 */
     double cos_SEW  = (pow(d_SE,2)+pow(d_EW,2)-pow(d_SW,2)) / (2*d_SE*d_EW);
-    double q4 = (M_PI - acos(cos_SEW));
-    sol_1[3] = q4;
-    sol_2[3] = q4;
-    sol_3[3] = q4;
-    sol_4[3] = q4;
-    sol_5[3] = -q4;
-    sol_6[3] = -q4;
-    sol_7[3] = -q4;
-    sol_8[3] = -q4;
+    double q4_raw = (M_PI - acos(cos_SEW));
+    for (int i = 0; i < 4; i++) sols[i][3] = q4_raw;
+    for (int i = 4; i < 8; i++) sols[i][3] = -q4_raw;
 
 
     /* Columns for coordinate system sigma-D when psi (elbow self-motion angle) = 0 */
@@ -270,85 +261,48 @@ void ik7dof(const struct aa_rx_sg *sg,
     double qu_sigma_D_data[4];
     aa_tf_qmulnorm(qu_sigma_D_psi_0.data, qu_x_psi.data, qu_sigma_D_data);
 
+    /* Find quat/rotation of shoulder spherical joint */
+    std::vector<std::array<double, 4>> qu_S_data_sols; // initialize vector of 8 arrays for quats of shoulder
+    for (int i = 0; i < 2; i++)
+    {
+        /* Find coordinate system sigma-0 */
+        double p_W_data_2[3] = {d_EW*sin(sols[i==0 ? 0 : 4][3]), 0, d_BS+d_SE+d_EW*cos(sols[i==0 ? 0 : 4][3])};
+        double v_SW_data_2[3];
+        aa_la_vsub(3, p_W_data_2, p_S.data, v_SW_data_2);  
+        double X_sigma_data_2[3];
+        memcpy(X_sigma_data_2, v_SW_data_2, 3*sizeof(double));
+        aa_la_normalize(3, X_sigma_data_2);
 
-    /* Find coordinate system sigma-0 */
-    double sol_1_p_W_data_2[3] = {d_EW*sin(sol_1[3]), 0, d_BS+d_SE+d_EW*cos(sol_1[3])};
-    double sol_2_p_W_data_2[3] = {d_EW*sin(sol_2[3]), 0, d_BS+d_SE+d_EW*cos(sol_2[3])};
-    double sol_3_p_W_data_2[3] = {d_EW*sin(sol_3[3]), 0, d_BS+d_SE+d_EW*cos(sol_3[3])};
-    double sol_4_p_W_data_2[3] = {d_EW*sin(sol_4[3]), 0, d_BS+d_SE+d_EW*cos(sol_4[3])};
-    double sol_5_p_W_data_2[3] = {d_EW*sin(sol_5[3]), 0, d_BS+d_SE+d_EW*cos(sol_5[3])};
-    double sol_6_p_W_data_2[3] = {d_EW*sin(sol_6[3]), 0, d_BS+d_SE+d_EW*cos(sol_6[3])};
-    double sol_7_p_W_data_2[3] = {d_EW*sin(sol_7[3]), 0, d_BS+d_SE+d_EW*cos(sol_7[3])};
-    double sol_8_p_W_data_2[3] = {d_EW*sin(sol_8[3]), 0, d_BS+d_SE+d_EW*cos(sol_8[3])};
+        double Y_sigma_data_2[3];
+        aa_la_cross(Z_0_data, X_sigma_data_2, Y_sigma_data_2);
+        aa_la_normalize(3, Y_sigma_data_2);
+        double temp_2 = aa_la_norm(3, Y_sigma_data_2);
+        if (temp_2 <= AA_EPSILON) { // special case when X_sigma and Z_0 are parallel
+            double Y_0_data[3] = {0, 1, 0};
+            memcpy(Y_sigma_data_2, Y_0_data, 3*sizeof(double));
+        }
 
-    double sol_1_v_SW_data_2[3];
-    aa_la_vsub(3, sol_1_p_W_data_2, p_S.data, sol_1_v_SW_data_2);
-    double sol_2_v_SW_data_2[3];
-    aa_la_vsub(3, sol_2_p_W_data_2, p_S.data, sol_2_v_SW_data_2);
-    double sol_3_v_SW_data_2[3];
-    aa_la_vsub(3, sol_3_p_W_data_2, p_S.data, sol_3_v_SW_data_2);
-    double sol_4_v_SW_data_2[3];
-    aa_la_vsub(3, sol_4_p_W_data_2, p_S.data, sol_4_v_SW_data_2);
-    double sol_5_v_SW_data_2[3];
-    aa_la_vsub(3, sol_5_p_W_data_2, p_S.data, sol_5_v_SW_data_2);
-    double sol_6_v_SW_data_2[3];
-    aa_la_vsub(3, sol_6_p_W_data_2, p_S.data, sol_6_v_SW_data_2);
-    double sol_7_v_SW_data_2[3];
-    aa_la_vsub(3, sol_7_p_W_data_2, p_S.data, sol_7_v_SW_data_2);
-    double sol_8_v_SW_data_2[3];
-    aa_la_vsub(3, sol_8_p_W_data_2, p_S.data, sol_8_v_SW_data_2);
+        double Z_sigma_data_2[3];
+        aa_la_cross(X_sigma_data_2, Y_sigma_data_2, Z_sigma_data_2);
+        aa_la_normalize(3, Z_sigma_data_2);
 
-    double sol_1_X_sigma_data_2[3];
-    memcpy(sol_1_X_sigma_data_2, sol_1_v_SW_data_2, 3*sizeof(double));
-    aa_la_normalize(3, sol_1_X_sigma_data_2);
+        struct amino::RotMat R_sigma_0{X_sigma_data_2[0], Y_sigma_data_2[0], Z_sigma_data_2[0],
+                                       X_sigma_data_2[1], Y_sigma_data_2[1], Z_sigma_data_2[1],
+                                       X_sigma_data_2[2], Y_sigma_data_2[2], Z_sigma_data_2[2]}; // aa_tf_rotmat
+        struct amino::Quat qu_sigma_0{R_sigma_0}; // aa_tf_quat
 
-    // // double Z_0_data[3] = {0, 0, 1};
-    // double Y_sigma_data_2[3];
-    // aa_la_cross(Z_0_data, X_sigma_data_2, Y_sigma_data_2);
-    // aa_la_normalize(3, Y_sigma_data_2);
-    // double temp_2 = aa_la_norm(3, Y_sigma_data_2);
-    // if (temp_2 <= AA_EPSILON) { // special case when X_sigma and Z_0 are parallel
-    //     double Y_0_data[3] = {0, 1, 0};
-    //     memcpy(Y_sigma_data_2, Y_0_data, 3*sizeof(double));
-    // }
-    // // std::cout << "Y_sigma_data_2:\n";
-    // // array_print(Y_sigma_data_2, 3);
+        /* Calculate quat/rotation of shoulder spherical joint */
+        double qu_S_data[4];
+        aa_tf_qmulc(qu_sigma_D_data, qu_sigma_0.data, qu_S_data);
 
-    // double Z_sigma_data_2[3];
-    // aa_la_cross(X_sigma_data_2, Y_sigma_data_2, Z_sigma_data_2);
-    // aa_la_normalize(3, Z_sigma_data_2);
-    // // std::cout << "Z_sigma_data_2:\n";
-    // // array_print(Z_sigma_data_2, 3);
+        std::array<double, 4> qu_S_data_std;
+        for (int j = 0; j < 4; j++) qu_S_data_std[j] = qu_S_data[j];
 
-    // struct amino::RotMat R_sigma_0{X_sigma_data_2[0], Y_sigma_data_2[0], Z_sigma_data_2[0],
-    //                                X_sigma_data_2[1], Y_sigma_data_2[1], Z_sigma_data_2[1],
-    //                                X_sigma_data_2[2], Y_sigma_data_2[2], Z_sigma_data_2[2]}; // aa_tf_rotmat
-    // struct amino::Quat qu_sigma_0{R_sigma_0}; // aa_tf_quat
-    // // array_print(qu_sigma_0.data, 4);
+        for (int k = 0; k < 4; k++) qu_S_data_sols.push_back(qu_S_data_std); // push a grand total of 8 times
+    }
 
 
-    // /* Find rotation of shoulder spherical joint */
-    // // double qu_sigma_0_inv_data[4];
-    // // aa_tf_qinv(qu_sigma_0.data, qu_sigma_0_inv_data);
-    // // double qu_S[4];
-    // // aa_tf_qmulnorm(qu_sigma_D_data_2, qu_sigma_0_inv_data, qu_S);
-    // // array_print(qu_S, 4);
-    // double qu_S_data[4];
-    // aa_tf_qmulc(qu_sigma_D_data_2, qu_sigma_0.data, qu_S_data);
-    // // array_print(qu_S_data, 4);
-    // double R_S_data[9];
-    // aa_tf_quat2rotmat(qu_S_data, R_S_data);
-    // std::cout << "Matrix R_S = R_0_3:\n";
-    // mat_print_raw(R_S_data, 3, 3);
-
-    // /* Calculate joint 2 */
-    // double q2 = arm_sign_param * acos(R_S_data[8]);
-
-    // /* Calculate joint 1*/
-    // double q1 = atan2( arm_sign_param*R_S_data[7] , arm_sign_param*R_S_data[6] );
-
-    // /* Calculate joint 3*/
-    // double q3 = atan2( arm_sign_param*R_S_data[5] , -arm_sign_param*R_S_data[2] );
+    /* CONTINUE HERE, get quat for W (wrist)*/
 
 
     // /* Find rotation of last three joints (5, 6, 7) combined, qu_W */
@@ -380,6 +334,21 @@ void ik7dof(const struct aa_rx_sg *sg,
 
     // /* Calculate joint 7 */
     // double q7 = atan2( wrist_sign_param*R_W_data[5] , -wrist_sign_param*R_W_data[2] );
+
+
+
+    // double R_S_data[9];
+    // aa_tf_quat2rotmat(qu_S_data, R_S_data);
+
+    // /* Calculate joint 2 */
+    // double q2 = arm_sign_param * acos(R_S_data[8]);
+
+    // /* Calculate joint 1*/
+    // double q1 = atan2( arm_sign_param*R_S_data[7] , arm_sign_param*R_S_data[6] );
+
+    // /* Calculate joint 3*/
+    // double q3 = atan2( arm_sign_param*R_S_data[5] , -arm_sign_param*R_S_data[2] );
+
 
 
     // /* Joint limit checks */
