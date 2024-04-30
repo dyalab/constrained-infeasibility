@@ -253,6 +253,7 @@ void ik7dof(const struct aa_rx_sg *sg,
                                          X_sigma_data[1], Y_sigma_data[1], Z_sigma_data[1],
                                          X_sigma_data[2], Y_sigma_data[2], Z_sigma_data[2]}; // aa_tf_rotmat
     struct amino::Quat qu_sigma_D_psi_0{R_sigma_D_psi_0}; // aa_tf_quat
+    aa_tf_qminimize(qu_sigma_D_psi_0.data);
 
 
     /* Find coordinate system sigma-D with given psi (elbow self-motion angle) */
@@ -260,6 +261,7 @@ void ik7dof(const struct aa_rx_sg *sg,
     struct amino::Quat qu_x_psi{x_angle_psi}; // aa_tf_quat
     double qu_sigma_D_data[4];
     aa_tf_qmulnorm(qu_sigma_D_psi_0.data, qu_x_psi.data, qu_sigma_D_data);
+    aa_tf_qminimize(qu_sigma_D_data);
 
     /* Find quat/rotation of shoulder spherical joint and wrist spherical joint */
     // std::vector<std::array<double, 4>> qu_S_data_sols; // initialize vector of 8 arrays for quats of shoulder
@@ -272,32 +274,34 @@ void ik7dof(const struct aa_rx_sg *sg,
         double p_W_data_2[3] = {d_EW*sin(sols[i][3]), 0, d_BS+d_SE+d_EW*cos(sols[i][3])};
         double v_SW_data_2[3];
         aa_la_vsub(3, p_W_data_2, p_S.data, v_SW_data_2);  
-        double X_sigma_data_2[3];
-        memcpy(X_sigma_data_2, v_SW_data_2, 3*sizeof(double));
-        aa_la_normalize(3, X_sigma_data_2);
+        double X_sigma_0_data[3];
+        memcpy(X_sigma_0_data, v_SW_data_2, 3*sizeof(double));
+        aa_la_normalize(3, X_sigma_0_data);
 
-        double Y_sigma_data_2[3];
-        aa_la_cross(Z_0_data, X_sigma_data_2, Y_sigma_data_2);
-        aa_la_normalize(3, Y_sigma_data_2);
-        double temp_2 = aa_la_norm(3, Y_sigma_data_2);
+        double Y_sigma_0_data[3];
+        aa_la_cross(Z_0_data, X_sigma_0_data, Y_sigma_0_data);
+        aa_la_normalize(3, Y_sigma_0_data);
+        double temp_2 = aa_la_norm(3, Y_sigma_0_data);
         if (temp_2 <= AA_EPSILON) { // special case when X_sigma and Z_0 are parallel
             double Y_0_data[3] = {0, 1, 0};
-            memcpy(Y_sigma_data_2, Y_0_data, 3*sizeof(double));
+            memcpy(Y_sigma_0_data, Y_0_data, 3*sizeof(double));
         }
 
-        double Z_sigma_data_2[3];
-        aa_la_cross(X_sigma_data_2, Y_sigma_data_2, Z_sigma_data_2);
-        aa_la_normalize(3, Z_sigma_data_2);
+        double Z_sigma_0_data[3];
+        aa_la_cross(X_sigma_0_data, Y_sigma_0_data, Z_sigma_0_data);
+        aa_la_normalize(3, Z_sigma_0_data);
 
-        struct amino::RotMat R_sigma_0{X_sigma_data_2[0], Y_sigma_data_2[0], Z_sigma_data_2[0],
-                                       X_sigma_data_2[1], Y_sigma_data_2[1], Z_sigma_data_2[1],
-                                       X_sigma_data_2[2], Y_sigma_data_2[2], Z_sigma_data_2[2]}; // aa_tf_rotmat
+        struct amino::RotMat R_sigma_0{X_sigma_0_data[0], Y_sigma_0_data[0], Z_sigma_0_data[0],
+                                       X_sigma_0_data[1], Y_sigma_0_data[1], Z_sigma_0_data[1],
+                                       X_sigma_0_data[2], Y_sigma_0_data[2], Z_sigma_0_data[2]}; // aa_tf_rotmat
         struct amino::Quat qu_sigma_0{R_sigma_0}; // aa_tf_quat
+        aa_tf_qminimize(qu_sigma_0.data);
 
         // Calculate quat/rotation of shoulder spherical joint
         double qu_S_data[4];
         aa_tf_qmulc(qu_sigma_D_data, qu_sigma_0.data, qu_S_data);
-        aa_la_normalize(4, qu_S_data);
+        aa_tf_qnormalize(qu_S_data);
+        aa_tf_qminimize(qu_S_data);
 
         // std::array<double, 4> qu_S_data_std;
         // for (int j = 0; j < 4; j++) qu_S_data_std[j] = qu_S_data[j];
@@ -311,18 +315,11 @@ void ik7dof(const struct aa_rx_sg *sg,
         struct amino::Quat qu_y_q4{y_angle_q4}; // aa_tf_quat
         double qu_0_4_data[4];
         aa_tf_qmulnorm(qu_S_data, qu_y_q4.data, qu_0_4_data);
-        /* One way*/
-        // double qu_W_data[4];
-        // aa_tf_qmulc(qu_T.data, qu_0_4_data, qu_W_data); // qu_T means qu_0_7, rotation from 0 to 7
-        // std::cout << "Quaternion of rot from 4 to 7:\n";
-        // array_print(qu_W_data, 4);
-        /* Another way, matches frame transitions better on paper */
+        aa_tf_qminimize(qu_0_4_data);
         double qu_W_data[4];
         aa_tf_qcmul(qu_0_4_data, qu_T.data, qu_W_data); // qu_T means qu_0_7, rotation from 0 to 7
-        // std::cout << "Quaternion of R_4_7:\n";
-        // array_print(qu_W_data, 4);
-        // std::array<double, 4> qu_W_data_std;
-        // for (int j = 0; j < 4; j++) qu_W_data_std[j] = qu_W_data[j];
+        aa_tf_qnormalize(qu_W_data);
+        aa_tf_qminimize(qu_W_data);
 
         // for (int k = 0; k < 4; k++) qu_W_data_sols.push_back(qu_W_data_std); // push a grand total of 8 times
         double euler_S[3]; // shoulder
