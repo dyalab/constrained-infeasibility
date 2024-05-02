@@ -381,14 +381,14 @@ void ik7dof(const struct aa_rx_sg *sg,
     }
 
 
-    // std::cout << "\nAll potential solutions:\n\n";
-    // for (int i = 0; i < 8; i++) {
-    //     std::cout << "Solution index " << i << ":\n";
-    //     for (int j = 0; j < sols[i].size(); j++) {
-    //         std::cout << "q" << j+1 << " = " << sols[i][j] << "\n";
-    //     } 
-    //     std::cout << "\n";
-    // }
+    std::cout << "\nAll potential solutions:\n\n";
+    for (int i = 0; i < 8; i++) {
+        std::cout << "Solution index " << i << ":\n";
+        for (int j = 0; j < sols[i].size(); j++) {
+            std::cout << "q" << j+1 << " = " << sols[i][j] << "\n";
+        } 
+        std::cout << "\n";
+    }
     
     /* Joint limit checks */
     std::vector<int> indices_in_limit;
@@ -515,17 +515,17 @@ int main(int argc, char ** argv)
         randomize_config(config_data, joint_limits);
         std::cout << "Scene's joint angles:\n";
 
-        // config_data[0] = -1.10819; // Set to something known, for debug
-        // config_data[1] = -0.370763;
-        // config_data[2] = 1.85778;
-        // config_data[3] = -1.45939;
-        // config_data[4] = 1.40562;
-        // config_data[5] = -1.19261;
-        // config_data[6] = 0.973711;
+        config_data[0] = -1.10819; // Set to something known, for debug
+        config_data[1] = -0.370763;
+        config_data[2] = 1.85778;
+        config_data[3] = -1.45939;
+        config_data[4] = 1.40562;
+        config_data[5] = -1.19261;
+        config_data[6] = 0.973711;
 
         // config_data[0] = -1.5; // Set to something known, for debug
         // config_data[1] = 0;
-        config_data[2] = 0;
+        // config_data[2] = 0;
         // config_data[3] = M_PI/3;
         // config_data[4] = -2;
         // config_data[5] = M_PI/3;
@@ -557,7 +557,8 @@ int main(int argc, char ** argv)
         struct amino::Quat qu_T{qu_T.from_quat(qu_T_data)};
 
         /* Additional parameters */
-        double elbow_ang_param = 0; // from -pi to pi
+        // double elbow_ang_param = 0; // from -pi to pi
+        double elbow_ang_param = -0.5721; // from -pi to pi
 
         /* Call ik function */
         ik7dof(sg,
