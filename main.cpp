@@ -263,15 +263,14 @@ void ik7dof(const struct aa_rx_sg *sg,
     aa_tf_qmulnorm(qu_sigma_D_psi_0.data, qu_x_psi.data, qu_sigma_D_data);
     aa_tf_qminimize(qu_sigma_D_data);
 
-    /* Find quat/rotation of shoulder spherical joint and wrist spherical joint */
-    // std::vector<std::array<double, 4>> qu_S_data_sols; // initialize vector of 8 arrays for quats of shoulder
-    // std::vector<std::array<double, 4>> qu_W_data_sols; // initialize vector of 8 arrays for quats of wrist
+    /* Find quaternion of should, quaternion of wrist, and extract euler angles */
     for (int i = 0; i < 8; i++)
     {
         /* Quaternion of shoulder spherical joint*/
 
         // Find coordinate system sigma-0
-        double p_W_data_2[3] = {d_EW*sin(sols[i][3]), 0, d_BS+d_SE+d_EW*cos(sols[i][3])};
+        double q4 = sols[i][3];
+        double p_W_data_2[3] = {d_EW*sin(q4), 0, d_BS+d_SE+d_EW*cos(q4)};
         double v_SW_data_2[3];
         aa_la_vsub(3, p_W_data_2, p_S.data, v_SW_data_2);  
         double X_sigma_0_data[3];
@@ -303,15 +302,9 @@ void ik7dof(const struct aa_rx_sg *sg,
         aa_tf_qnormalize(qu_S_data);
         aa_tf_qminimize(qu_S_data);
 
-        // std::array<double, 4> qu_S_data_std;
-        // for (int j = 0; j < 4; j++) qu_S_data_std[j] = qu_S_data[j];
-
-        // for (int k = 0; k < 4; k++) qu_S_data_sols.push_back(qu_S_data_std); // push a grand total of 8 times
-
 
         /* Quaternion of wrist spherical joint*/
-
-        struct amino::YAngle y_angle_q4{sols[i][3]};
+        struct amino::YAngle y_angle_q4{q4};
         struct amino::Quat qu_y_q4{y_angle_q4}; // aa_tf_quat
         double qu_0_4_data[4];
         aa_tf_qmulnorm(qu_S_data, qu_y_q4.data, qu_0_4_data);
@@ -321,19 +314,35 @@ void ik7dof(const struct aa_rx_sg *sg,
         aa_tf_qnormalize(qu_W_data);
         aa_tf_qminimize(qu_W_data);
 
-        // for (int k = 0; k < 4; k++) qu_W_data_sols.push_back(qu_W_data_std); // push a grand total of 8 times
+
+        /* Extract euler angles */
         double euler_S[3]; // shoulder
-        aa_tf_quat2eulerzyz(qu_S_data, euler_S);
+        switch (i) {
+            case 0:
+            case 1:
+            case 4:
+            case 5:
+                aa_tf_quat2eulerzyz(qu_S_data, euler_S);
+                break;
+
+            default:
+                aa_tf_quat2eulerzyz_negative(qu_S_data, euler_S);
+                break;
+        } 
         sols[i][0] = euler_S[0]; // q1. NEED TO ADD THE SIGN CONVENTIONS HERE
         sols[i][1] = euler_S[1]; // q2
         sols[i][2] = euler_S[2]; // q3 
+
         double euler_W[3]; // wrist
-        aa_tf_quat2eulerzyz(qu_W_data, euler_W);
+        if (i % 2 == 0) {
+            aa_tf_quat2eulerzyz(qu_W_data, euler_W);
+        } else {
+            aa_tf_quat2eulerzyz_negative(qu_W_data, euler_W);
+        }
         sols[i][4] = euler_W[0]; // q5. NEED TO ADD THE SIGN CONVENTIONS HERE
         sols[i][5] = euler_W[1]; // q6
         sols[i][6] = euler_W[2]; // q7 
 
-        
         /* Correct signs per axis-conventions of URDF file */
         sols[i][0] = -sols[i][0]; // q1
         sols[i][1] = -sols[i][1]; // q2
@@ -344,75 +353,71 @@ void ik7dof(const struct aa_rx_sg *sg,
         sols[i][6] = sols[i][6]; // q7 
     }
 
-    /* Joint limit checks */
-    std::cout << "Joint q1 before limit check = " << sols[0][0] << "\n";
-    // check_joint_limits(q1, joint_limits, 1);
-    // std::cout << "Joint q1 after limit check = " << q1 << "\n\n";    
 
-    std::cout << "Joint q2 before limit check = " << sols[0][1] << "\n";
-    // check_joint_limits(q2, joint_limits, 2);
-    // std::cout << "Joint q2 after limit check = " << q2 << "\n\n";
+    for (int i = 0; i < 8; i++)
+    {
+        /* Joint limit checks */
 
-    std::cout << "Joint q3 before limit check = " << sols[0][2] << "\n";
-    // check_joint_limits(q3, joint_limits, 3);
-    // std::cout << "Joint q3 after limit check = " << q3 << "\n\n";
+        std::cout << "Joint q1 before limit check = " << sols[i][0] << "\n";
+        // check_joint_limits(q1, joint_limits, 1);
+        // std::cout << "Joint q1 after limit check = " << q1 << "\n\n";    
 
-    std::cout << "Joint q4 before limit check = " << sols[0][3] << "\n";
-    // check_joint_limits(q4, joint_limits, 4);
-    // std::cout << "Joint q4 after limit check = " << q4 << "\n\n";
+        std::cout << "Joint q2 before limit check = " << sols[i][1] << "\n";
+        // check_joint_limits(q2, joint_limits, 2);
+        // std::cout << "Joint q2 after limit check = " << q2 << "\n\n";
 
-    std::cout << "Joint q5 before limit check = " << sols[0][4] << "\n";
-    // check_joint_limits(q5, joint_limits, 5);
-    // std::cout << "Joint q5 after limit check = " << q5 << "\n\n";
+        std::cout << "Joint q3 before limit check = " << sols[i][2] << "\n";
+        // check_joint_limits(q3, joint_limits, 3);
+        // std::cout << "Joint q3 after limit check = " << q3 << "\n\n";
 
-    std::cout << "Joint q6 before limit check = " << sols[0][5] << "\n";
-    // check_joint_limits(q6, joint_limits, 6);
-    // std::cout << "Joint q6 after limit check = " << q6 << "\n\n";
+        std::cout << "Joint q4 before limit check = " << sols[i][3] << "\n";
+        // check_joint_limits(q4, joint_limits, 4);
+        // std::cout << "Joint q4 after limit check = " << q4 << "\n\n";
 
-    std::cout << "Joint q7 before limit check = " << sols[0][6] << "\n\n";
-    // check_joint_limits(q7, joint_limits, 7);
-    // std::cout << "Joint q7 after limit check = " << q7 << "\n\n";
+        std::cout << "Joint q5 before limit check = " << sols[i][4] << "\n";
+        // check_joint_limits(q5, joint_limits, 5);
+        // std::cout << "Joint q5 after limit check = " << q5 << "\n\n";
+
+        std::cout << "Joint q6 before limit check = " << sols[i][5] << "\n";
+        // check_joint_limits(q6, joint_limits, 6);
+        // std::cout << "Joint q6 after limit check = " << q6 << "\n\n";
+
+        std::cout << "Joint q7 before limit check = " << sols[i][6] << "\n\n";
+        // check_joint_limits(q7, joint_limits, 7);
+        // std::cout << "Joint q7 after limit check = " << q7 << "\n\n";
+        
+
+        /* Test with forward kinematics, using modified (proximal) DH per M. Gong et al. */
+        // Given
+        double T_0_7_given[12];
+        aa_tf_qv2tfmat(qu_T.data, p_T_data, T_0_7_given);
+        std::cout << "End effector transf matrix given:\n";
+        mat_print_pretty(T_0_7_given, 3, 4);
+        // Calculated
+        double config_data_res[7] = {sols[i][0], 
+                                    sols[i][1], 
+                                    sols[i][2], 
+                                    sols[i][3], 
+                                    sols[i][4], 
+                                    sols[i][5], 
+                                    sols[i][6]}; 
+        struct aa_dvec config_vec_res = AA_DVEC_INIT(7, config_data_res, 1);
+        aa_rx_fk_all(fk, &config_vec_res);
+        double qutr_T_res[7];
+        aa_rx_fk_get_abs_qutr(fk, frame_ee, qutr_T_res);
+        double p_0_7_res[3];
+        memcpy(p_0_7_res, qutr_T_res+4, 3*sizeof(double));
+        double qu_0_7_res[4];
+        memcpy(qu_0_7_res, qutr_T_res, 4*sizeof(double));
+        double T_0_7_res[12];
+        aa_tf_qv2tfmat(qu_0_7_res, p_0_7_res, T_0_7_res);
+        std::cout << "End effector transf matrix from result:\n";
+        mat_print_pretty(T_0_7_res, 3, 4);
+        // Test equal
+        admeq( "result T == given T", T_0_7_res, T_0_7_given, AA_EPSILON, 12 );
+    }
     
-
-    /* Check with forward kinematics, using modified (proximal) DH per M. Gong et al. */
-    // Given
-    double T_0_7_given[12];
-    aa_tf_qv2tfmat(qu_T.data, p_T_data, T_0_7_given);
-    std::cout << "End effector transf matrix given:\n";
-    mat_print_raw(T_0_7_given, 3, 4);
-    // Calculated
-    double config_data_res[7] = {sols[0][0], 
-                                 sols[0][1], 
-                                 sols[0][2], 
-                                 sols[0][3], 
-                                 sols[0][4], 
-                                 sols[0][5], 
-                                 sols[0][6]}; 
-    struct aa_dvec config_vec_res = AA_DVEC_INIT(7, config_data_res, 1);
-    aa_rx_fk_all(fk, &config_vec_res);
-    double qutr_T_res[7];
-    aa_rx_fk_get_abs_qutr(fk, frame_ee, qutr_T_res);
-    double p_0_7_res[3];
-    memcpy(p_0_7_res, qutr_T_res+4, 3*sizeof(double));
-    double qu_0_7_res[4];
-    memcpy(qu_0_7_res, qutr_T_res, 4*sizeof(double));
-    double T_0_7_res[12];
-    aa_tf_qv2tfmat(qu_0_7_res, p_0_7_res, T_0_7_res);
-    std::cout << "End effector transf matrix from result:\n";
-    mat_print_raw(T_0_7_res, 3, 4);
-
-    // struct aa_dmat T_result = AA_DMAT_INIT(3, 4, T_0_7_res, 3);
-    // struct aa_dmat T_given = AA_DMAT_INIT(3, 4, T_0_7_given, 3);
-    admeq( "result T == given T", T_0_7_res, T_0_7_given, AA_EPSILON, 12 );
-
-
-    /* Visualize result */
-    // struct aa_rx_win *win2 = 
-    //         aa_rx_win_default_create("RESULT IK", SCREEN_WIDTH, SCREEN_HEIGHT);
-    // aa_rx_win_set_sg(win2, sg); // set the scenegraph for the window
-    // aa_rx_win_set_config(win, 7, config_data_res);
-    // aa_rx_win_run();
-
+    
     /* Clean up allocated structures */
     aa_rx_fk_destroy(fk);
     // aa_rx_sg_destroy(sg);
