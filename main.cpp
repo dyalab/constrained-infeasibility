@@ -86,7 +86,7 @@ array_print(const double *data, const int n)
     std::cout << "\n";
 }
 
-static inline bool
+static bool
 check_joint_limits(std::array<double, 7> &sol, 
                    const double joint_limits[14])
 {
@@ -124,6 +124,12 @@ randomize_config(double config_data[7],
         config_data[i] = dis1(gen);
         // std::cout << "Joint " << i+1 << " = " << config_data[i] << "\n";
     }
+}
+
+static double
+calculate_elbow_param()
+{
+
 }
 
 static int SCREEN_WIDTH = 800;
@@ -381,14 +387,14 @@ void ik7dof(const struct aa_rx_sg *sg,
     }
 
 
-    std::cout << "\nAll potential solutions:\n\n";
-    for (int i = 0; i < 8; i++) {
-        std::cout << "Solution index " << i << ":\n";
-        for (int j = 0; j < sols[i].size(); j++) {
-            std::cout << "q" << j+1 << " = " << sols[i][j] << "\n";
-        } 
-        std::cout << "\n";
-    }
+    // std::cout << "\nAll potential solutions:\n\n";
+    // for (int i = 0; i < 8; i++) {
+    //     std::cout << "Solution index " << i << ":\n";
+    //     for (int j = 0; j < sols[i].size(); j++) {
+    //         std::cout << "q" << j+1 << " = " << sols[i][j] << "\n";
+    //     } 
+    //     std::cout << "\n";
+    // }
     
     /* Joint limit checks */
     std::vector<int> indices_in_limit;
@@ -557,8 +563,8 @@ int main(int argc, char ** argv)
         struct amino::Quat qu_T{qu_T.from_quat(qu_T_data)};
 
         /* Additional parameters */
-        // double elbow_ang_param = 0; // from -pi to pi
-        double elbow_ang_param = -0.5721; // from -pi to pi
+        // double elbow_ang_param = -0.5721; // from -pi to pi
+        double elbow_ang_param = calculate_elbow_param();
 
         /* Call ik function */
         ik7dof(sg,
