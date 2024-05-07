@@ -198,8 +198,8 @@ calc_SW(const double &d_SE,
 }
 
 static inline void
-calc_sigma_D_psi_0(const double v_SW_data[3],
-                   struct amino::Quat &qu_sigma_D_psi_0)
+calc_sigma(const double v_SW_data[3],
+           struct amino::Quat &qu_sigma)
 {
     double X_sigma_data[3],
            Y_sigma_data[3],
@@ -224,25 +224,104 @@ calc_sigma_D_psi_0(const double v_SW_data[3],
     aa_la_normalize(3, Z_sigma_data);
 
     /* Whole sigma-D coordinate system when psi = 0 */
-    struct amino::RotMat R_sigma_D_psi_0{X_sigma_data[0], Y_sigma_data[0], Z_sigma_data[0],
-                                         X_sigma_data[1], Y_sigma_data[1], Z_sigma_data[1],
-                                         X_sigma_data[2], Y_sigma_data[2], Z_sigma_data[2]}; // aa_tf_rotmat
-    qu_sigma_D_psi_0 = qu_sigma_D_psi_0.from_rotmat(R_sigma_D_psi_0.data); // aa_tf_quat
-    aa_tf_qminimize(qu_sigma_D_psi_0.data);
+    struct amino::RotMat R_sigma{X_sigma_data[0], Y_sigma_data[0], Z_sigma_data[0],
+                                 X_sigma_data[1], Y_sigma_data[1], Z_sigma_data[1],
+                                 X_sigma_data[2], Y_sigma_data[2], Z_sigma_data[2]}; // aa_tf_rotmat
+    qu_sigma = qu_sigma.from_rotmat(R_sigma.data); // aa_tf_quat
+    aa_tf_qminimize(qu_sigma.data);
 }
 
 static double
 calc_elbow_param(const struct aa_rx_sg *sg,
-                      const double config_data[7],
-                      const double p_T_data[3],
-                      const struct amino::Quat &qu_T,
-                      const char *fr_name_base,
-                      const char *fr_name_2,
-                      const char *fr_name_4,
-                      const char *fr_name_6,
-                      const char *fr_name_ee)
+                 const double config_data[7],
+                 const double p_T_data[3],
+                 const struct amino::Quat &qu_T,
+                 const char *fr_name_base,
+                 const char *fr_name_2,
+                 const char *fr_name_4,
+                 const char *fr_name_6,
+                 const char *fr_name_ee)
 {
     double elbow_ang_param = 0;
+
+    /* Correct signs per axis-conventions of URDF file */
+    double q1 = -config_data[0];
+    double q2 = -config_data[1];
+    double q3 = -config_data[2];
+    double q4 = -config_data[3];
+
+    /* Find offsets between frames/joints */
+    double d1 = 0, 
+           d3 = 0, 
+           d5 = 0, 
+           d7 = 0;
+    calc_offsets(sg,
+                 fr_name_base,
+                 fr_name_2,
+                 fr_name_4,
+                 fr_name_6,
+                 fr_name_ee,
+                 d1, d3, d5, d7);
+
+    /* Other names for the offsets */
+    double d_BS = d1; // B=base(0), S=shoulder(q2), E=elbow(q4), W=wrist(q6), T=tool(q7)
+    double d_SE = d3;
+    double d_EW = d5;
+    double d_WT = d7;
+
+    /* Calculate vector and distance from S to W */
+    struct amino::Vec3 p_S{0, 0, d_BS}; // position of shoulder 
+    struct amino::Vec3 p_T{p_T_data}; // user-assigned position of tool 
+    // We have orientation of tool as qu_T
+    struct amino::QuatTran qutr_T{qu_T, p_T}; // user-assigned pose/transformation of tool
+    aa_tf_qminimize(qutr_T.r.data);
+    double v_SW_data[3] = {0};
+    double d_SW = 0;
+    calc_SW(d_SE,
+            d_EW,
+            d_WT,
+            p_S,
+            qutr_T,
+            d_SW,
+            v_SW_data);
+
+    /* Columns for coordinate system sigma-D when psi (elbow self-motion angle) = 0 */
+    struct amino::Quat qu_sigma_D_psi_0; // aa_tf_quat
+    calc_sigma(v_SW_data,
+               qu_sigma_D_psi_0);
+    aa_tf_qminimize(qu_sigma_D_psi_0.data);
+
+    /* Find coordinate system sigma-0 */
+    double p_W_data_2[3] = {d_EW*sin(q4), 0, d_BS+d_SE+d_EW*cos(q4)};
+    double v_SW_data_2[3] = {0};
+    aa_la_vsub(3, p_W_data_2, p_S.data, v_SW_data_2);
+    struct amino::Quat qu_sigma_0;
+    calc_sigma(v_SW_data_2,
+               qu_sigma_0);
+    aa_tf_qminimize(qu_sigma_0.data);
+
+    /* Calculate qu_S or R_S */
+    double qu_S_given[4] = {0};
+    aa_tf_eulerzyz2quat(q1, q2, q3, qu_S_given);
+    aa_tf_qminimize(qu_S_given);
+
+    /* Calculate qu_x_psi or R_x_psi */
+    double qu_x_psi[4] = {0};
+    double qu_temp[4] = {0};
+    aa_tf_qmulnorm(qu_S_given, qu_sigma_0.data, qu_temp);
+    aa_tf_qcmul(qu_sigma_D_psi_0.data, qu_temp, qu_x_psi);
+    aa_tf_qnormalize(qu_x_psi);
+    aa_tf_qminimize(qu_x_psi);
+    
+    /* Calculate psi (self-motion angle) from R_x_psi */
+    double R_x_psi[9] = {0};
+    aa_tf_quat2rotmat(qu_x_psi, R_x_psi);
+    
+    std::cout << "\nDebug 1 - R_x_psi =\n";
+    mat_print_pretty(R_x_psi, 3, 3);
+
+    elbow_ang_param = atan2(R_x_psi[5], R_x_psi[4]);
+
     return elbow_ang_param;
 }
 
@@ -325,8 +404,9 @@ void ik7dof(const struct aa_rx_sg *sg,
 
     /* Columns for coordinate system sigma-D when psi (elbow self-motion angle) = 0 */
     struct amino::Quat qu_sigma_D_psi_0; // aa_tf_quat
-    calc_sigma_D_psi_0(v_SW_data,
-                       qu_sigma_D_psi_0);
+    calc_sigma(v_SW_data,
+               qu_sigma_D_psi_0);
+    aa_tf_qminimize(qu_sigma_D_psi_0.data);
 
     /* Find coordinate system sigma-D with given psi (elbow self-motion angle) */
     struct amino::XAngle x_angle_psi{elbow_ang_param}; 
@@ -340,34 +420,14 @@ void ik7dof(const struct aa_rx_sg *sg,
     for (int i = 0; i < 8; i++)
     {
         /* Quaternion of shoulder spherical joint*/
-
         // Find coordinate system sigma-0
         double q4 = sols[i][3];
         double p_W_data_2[3] = {d_EW*sin(q4), 0, d_BS+d_SE+d_EW*cos(q4)};
         double v_SW_data_2[3];
-        aa_la_vsub(3, p_W_data_2, p_S.data, v_SW_data_2);  
-        double X_sigma_0_data[3];
-        memcpy(X_sigma_0_data, v_SW_data_2, 3*sizeof(double));
-        aa_la_normalize(3, X_sigma_0_data);
-
-        double Y_sigma_0_data[3];
-        double Z_0_data[3] = {0, 0, 1};
-        aa_la_cross(Z_0_data, X_sigma_0_data, Y_sigma_0_data);
-        aa_la_normalize(3, Y_sigma_0_data);
-        double temp_2 = aa_la_norm(3, Y_sigma_0_data);
-        if (temp_2 <= AA_EPSILON) { // special case when X_sigma and Z_0 are parallel
-            double Y_0_data[3] = {0, 1, 0};
-            memcpy(Y_sigma_0_data, Y_0_data, 3*sizeof(double));
-        }
-
-        double Z_sigma_0_data[3];
-        aa_la_cross(X_sigma_0_data, Y_sigma_0_data, Z_sigma_0_data);
-        aa_la_normalize(3, Z_sigma_0_data);
-
-        struct amino::RotMat R_sigma_0{X_sigma_0_data[0], Y_sigma_0_data[0], Z_sigma_0_data[0],
-                                       X_sigma_0_data[1], Y_sigma_0_data[1], Z_sigma_0_data[1],
-                                       X_sigma_0_data[2], Y_sigma_0_data[2], Z_sigma_0_data[2]}; // aa_tf_rotmat
-        struct amino::Quat qu_sigma_0{R_sigma_0}; // aa_tf_quat
+        aa_la_vsub(3, p_W_data_2, p_S.data, v_SW_data_2);
+        struct amino::Quat qu_sigma_0;
+        calc_sigma(v_SW_data_2,
+                   qu_sigma_0);
         aa_tf_qminimize(qu_sigma_0.data);
 
         // Calculate quat/rotation of shoulder spherical joint
@@ -375,6 +435,9 @@ void ik7dof(const struct aa_rx_sg *sg,
         aa_tf_qmulc(qu_sigma_D_data, qu_sigma_0.data, qu_S_data);
         aa_tf_qnormalize(qu_S_data);
         aa_tf_qminimize(qu_S_data);
+
+        // std::cout << "qu_S_data (" << i << ") =\n";
+        // array_print(qu_S_data, 4);
 
 
         /* Quaternion of wrist spherical joint*/
@@ -465,21 +528,18 @@ void ik7dof(const struct aa_rx_sg *sg,
 
         // Calculated
         double config_data_res[7] = {sols[i][0], 
-                                    sols[i][1], 
-                                    sols[i][2], 
-                                    sols[i][3], 
-                                    sols[i][4], 
-                                    sols[i][5], 
-                                    sols[i][6]}; 
+                                     sols[i][1], 
+                                     sols[i][2], 
+                                     sols[i][3], 
+                                     sols[i][4], 
+                                     sols[i][5], 
+                                     sols[i][6]}; 
         struct aa_dvec config_vec_res = AA_DVEC_INIT(7, config_data_res, 1);
         aa_rx_fk_all(fk, &config_vec_res);
         double qutr_T_res[7];
         aa_rx_fk_get_abs_qutr(fk, frame_ee, qutr_T_res);
         // Minimize quaternion part of result qutr
-        double qu_res[4] = {0};
-        memcpy(qu_res, qutr_T_res, 4*sizeof(double)); // copy out of qutr_T_res
-        aa_tf_qminimize(qu_res);
-        memcpy(qutr_T_res, qu_res, 4*sizeof(double)); // copy back in qutr_T_res
+        aa_tf_qminimize(qutr_T_res); // only affects first 4 elements
         
         // Test equal
         if ( admeq2( "result qutr == given qutr", qutr_T.data, qutr_T_res, AA_EPSILON, 7 ) ) {
@@ -563,13 +623,13 @@ int main(int argc, char ** argv)
         randomize_config(config_data, joint_limits);
         std::cout << "Scene's joint angles:\n";
 
-        config_data[0] = -1.10819; // Set to something known, for debug
-        config_data[1] = -0.370763;
-        config_data[2] = 1.85778;
-        config_data[3] = -1.45939;
-        config_data[4] = 1.40562;
-        config_data[5] = -1.19261;
-        config_data[6] = 0.973711;
+        // config_data[0] = -1.10819; // Set to something known, for debug
+        // config_data[1] = -0.370763;
+        // config_data[2] = 1.85778;
+        // config_data[3] = -1.45939;
+        // config_data[4] = 1.40562;
+        // config_data[5] = -1.19261;
+        // config_data[6] = 0.973711;
 
         // config_data[0] = -1.5; // Set to something known, for debug
         // config_data[1] = 0;
@@ -606,17 +666,17 @@ int main(int argc, char ** argv)
 
         /* Additional parameters */
         double elbow_ang_param = calc_elbow_param(sg,
-                                                       config_data,
-                                                       p_T_data, 
-                                                       qu_T,
-                                                       fr_name_base,
-                                                       fr_name_2,
-                                                       fr_name_4,
-                                                       fr_name_6,
-                                                       fr_name_ee);
+                                                  config_data,
+                                                  p_T_data, 
+                                                  qu_T,
+                                                  fr_name_base,
+                                                  fr_name_2,
+                                                  fr_name_4,
+                                                  fr_name_6,
+                                                  fr_name_ee);
         std::cout << "Calculated elbow_ang_param = " << elbow_ang_param << "\n\n";
     
-        elbow_ang_param = -0.5721; // from -pi to pi -- Debug
+        // elbow_ang_param = -0.5721; // from -pi to pi -- Debug
 
         /* Call ik function */
         ik7dof(sg,
