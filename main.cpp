@@ -13,6 +13,8 @@
 #include <random>
 #include <vector>
 #include <array>
+#include <chrono>
+#include <float.h>
 
 static inline void
 aafeq(const char *name, double a, double b, double tol)
@@ -169,7 +171,7 @@ calc_offsets(const struct aa_rx_sg *sg,
     aa_rx_fk_destroy(fk);
 }
 
-static inline void
+static inline bool
 calc_SW(const double &d_SE,
         const double &d_EW,
         const double &d_WT,
@@ -190,11 +192,13 @@ calc_SW(const double &d_SE,
     d_SW = aa_la_norm(3, v_SW_data);
     double difference = d_SW - (d_SE + d_EW);
     if (difference >= -0.02 && difference <= 0) {
-        std::cout << "WARNING: d_SW approximately equal d_SE + d_EW --> pose is near workspace limit!\n";
+        // std::cout << "WARNING: d_SW approximately equal d_SE + d_EW --> pose is near workspace limit!\n";
     } else if (difference > 0) {
         std::cout << "ERROR: d_SW > d_SE + d_EW\n";
-        assert(d_SW - (d_SE + d_EW) <= 0);
+        // assert(d_SW - (d_SE + d_EW) <= 0);
+        return false;
     }
+    return true;
 }
 
 static inline void
@@ -317,8 +321,8 @@ calc_elbow_param(const struct aa_rx_sg *sg,
     double R_x_psi[9] = {0};
     aa_tf_quat2rotmat(qu_x_psi, R_x_psi);
     
-    std::cout << "\nDebug 1 - R_x_psi =\n";
-    mat_print_pretty(R_x_psi, 3, 3);
+    // std::cout << "\nDebug 1 - R_x_psi =\n";
+    // mat_print_pretty(R_x_psi, 3, 3);
 
     elbow_ang_param = atan2(R_x_psi[5], R_x_psi[4]);
 
@@ -331,16 +335,16 @@ static int SCREEN_HEIGHT = 600;
 
 /* ik7dof takes the DH parameter link lengths, desired position of tool,
    desired orientation of tool, and returns the joint angles needed */
-void ik7dof(const struct aa_rx_sg *sg,
-            const double p_T_data[3],
-            const struct amino::Quat &qu_T,
-            const double &elbow_ang_param,
-            const double joint_limits[14],
-            const char *fr_name_base,
-            const char *fr_name_2,
-            const char *fr_name_4,
-            const char *fr_name_6,
-            const char *fr_name_ee) 
+std::vector<std::array<double, 7>> ik7dof(const struct aa_rx_sg *sg,
+                                          const double p_T_data[3],
+                                          const struct amino::Quat &qu_T,
+                                          const double &elbow_ang_param,
+                                          const double joint_limits[14],
+                                          const char *fr_name_base,
+                                          const char *fr_name_2,
+                                          const char *fr_name_4,
+                                          const char *fr_name_6,
+                                          const char *fr_name_ee) 
 {
     // std::cout << "Got into ik7dof() successfully!\n\n";
 
@@ -388,13 +392,18 @@ void ik7dof(const struct aa_rx_sg *sg,
     aa_tf_qminimize(qutr_T.r.data);
     double v_SW_data[3] = {0};
     double d_SW = 0;
-    calc_SW(d_SE,
-            d_EW,
-            d_WT,
-            p_S,
-            qutr_T,
-            d_SW,
-            v_SW_data);
+    bool d_SW_constraint_sat = calc_SW(d_SE,
+                                       d_EW,
+                                       d_WT,
+                                       p_S,
+                                       qutr_T,
+                                       d_SW,
+                                       v_SW_data);
+    
+    if (!d_SW_constraint_sat) {
+        std::vector<std::array<double, 7>> empty_vec; // newly declared vectors are 0 size
+        return empty_vec;
+    }
 
     /* Find joint 4 */
     double cos_SEW  = (pow(d_SE,2)+pow(d_EW,2)-pow(d_SW,2)) / (2*d_SE*d_EW);
@@ -517,12 +526,14 @@ void ik7dof(const struct aa_rx_sg *sg,
         }
     }
 
-    std::cout << "\nNumber of solutions within joint limits: " << indices_in_limit.size() << "\n";
+    // std::cout << "\nDebug - Number of solutions within joint limits: "\
+    // << indices_in_limit.size() << "\n";
 
     /* Test with forward kinematics */
     struct aa_rx_fk *fk = aa_rx_fk_malloc(sg);
     aa_rx_frame_id frame_ee = aa_rx_sg_frame_id(sg, fr_name_ee);
     std::vector<int> indices_final;
+    int valid_count = 0;
     for (const int& i : indices_in_limit) {
         // Given: qutr_T calculated above
 
@@ -538,26 +549,26 @@ void ik7dof(const struct aa_rx_sg *sg,
         aa_rx_fk_all(fk, &config_vec_res);
         double qutr_T_res[7];
         aa_rx_fk_get_abs_qutr(fk, frame_ee, qutr_T_res);
-        // Minimize quaternion part of result qutr
+        // Minimize quaternion part of qutr
         aa_tf_qminimize(qutr_T_res); // only affects first 4 elements
+        aa_tf_qminimize(qutr_T.data); 
         
         // Test equal
-        if ( admeq2( "result qutr == given qutr", qutr_T.data, qutr_T_res, AA_EPSILON, 7 ) ) {
+        if ( admeq2( "1 solution configuration invalid after limit checking...",\
+         qutr_T.data, qutr_T_res, AA_EPSILON, 7 ) ) {
             indices_final.push_back(i);
+            valid_count++;
         }
     }
 
-
-    /* Print the solutions that passed */
-    std::cout << "\nValid solutions:\n\n";
+    /* Push the solutions that passed */
+    std::vector<std::array<double, 7>> sols_final;
     for (const int& i : indices_final) {
-        std::cout << "Solution index " << i << ":\n";
-        for (int j = 0; j < sols[i].size(); j++) {
-            std::cout << "q" << j+1 << " = " << sols[i][j] << "\n";
-        } 
-        std::cout << "\n";
+        sols_final.push_back(sols[i]);
     }
-
+    // /* Print the solutions that passed */
+    // std::cout << "\nDebug 1 - Number of valid solutions (matching ee): "\
+    // << sols_final.size() << "\n\n";
     
     /* Clean up allocated structures */
     aa_rx_fk_destroy(fk);
@@ -565,7 +576,7 @@ void ik7dof(const struct aa_rx_sg *sg,
     // aa_rx_win_destroy(win);
 
     // std::cout << "Got to the end of ik7dof()!\n\n";
-    return;
+    return sols_final;
 }
 
 
@@ -573,7 +584,7 @@ void ik7dof(const struct aa_rx_sg *sg,
 /* -------------------------------------------------------------------------------------- */
 int main(int argc, char ** argv) 
 {
-    std::cout << "Got into main() successfully!\n\n";
+    std::cout << "Got into main() successfully!\n";
 
     /* Following  "Analytical Inverse Kinematics and Self-Motion 
     Application for 7-DOF Redundant Manipulator" - M. Gong et al.*/
@@ -614,14 +625,17 @@ int main(int argc, char ** argv)
     const char *fr_name_6 = "robot_6_joint";
     const char *fr_name_ee = "robot_ee_joint";
 
-
     /* Randomize joints, get Td from FK, run IK, compare, repeat */    
-    for (int i = 0; i < 1; i++) {
+    double total_time = 0;
+    double total_percent_error = 0;
+    int solved_num = 0;
+    int num_runs = 1000000;
+    for (int i = 0; i < num_runs; i++) {
         // std::cout << "------------ Run #" << i+1 << " of IK ------------\n\n"; 
 
         /* Sample 7 random joint angles */
         randomize_config(config_data, joint_limits);
-        std::cout << "Scene's joint angles:\n";
+        // std::cout << "\nDebug - scene's joint angles:\n";
 
         // config_data[0] = -1.10819; // Set to something known, for debug
         // config_data[1] = -0.370763;
@@ -639,21 +653,22 @@ int main(int argc, char ** argv)
         // config_data[5] = M_PI/3;
         // config_data[6] = 2.3;
 
-        array_print(config_data, 7);
+        // array_print(config_data, 7);
+
         aa_dvec_view(&config_vec, 7, config_data, 1);
         aa_rx_fk_all(fk, &config_vec);
         aa_rx_frame_id frame_ee = aa_rx_sg_frame_id(sg, fr_name_ee);
         double qutr_data[7];
         aa_rx_fk_get_abs_qutr(fk, frame_ee, qutr_data); // get rot and trans of ee
 
-        /* Visualize */ 
-        struct aa_rx_win *win = 
-            aa_rx_win_default_create("GIVEN CONFIGURATION", SCREEN_WIDTH, SCREEN_HEIGHT);
-        aa_rx_win_set_sg(win, sg); // set the scenegraph for the window
-        aa_rx_win_set_config(win, 7, config_data);
-        aa_rx_win_run();
-        /* Clean up allocated structures */
-        aa_rx_win_destroy(win);
+        // /* Visualize */ 
+        // struct aa_rx_win *win = 
+        //     aa_rx_win_default_create("GIVEN CONFIGURATION", SCREEN_WIDTH, SCREEN_HEIGHT);
+        // aa_rx_win_set_sg(win, sg); // set the scenegraph for the window
+        // aa_rx_win_set_config(win, 7, config_data);
+        // aa_rx_win_run();
+        // /* Clean up allocated structures */
+        // aa_rx_win_destroy(win);
 
         /* Given position of tool (randomized) */
         double p_T_data[3];
@@ -674,27 +689,82 @@ int main(int argc, char ** argv)
                                                   fr_name_4,
                                                   fr_name_6,
                                                   fr_name_ee);
-        std::cout << "Calculated elbow_ang_param = " << elbow_ang_param << "\n\n";
+        // std::cout << "Debug - Calculated elbow_ang_param = " << elbow_ang_param << "\n\n";
     
         // elbow_ang_param = -0.5721; // from -pi to pi -- Debug
 
         /* Call ik function */
-        ik7dof(sg,
-               p_T_data, 
-               qu_T,
-               elbow_ang_param, 
-               joint_limits,
-               fr_name_base,
-               fr_name_2,
-               fr_name_4,
-               fr_name_6,
-               fr_name_ee);
+        std::vector<std::array<double, 7>> sols_final;
+        auto beg = std::chrono::high_resolution_clock::now();
+        sols_final = ik7dof(sg,
+                            p_T_data, 
+                            qu_T,
+                            elbow_ang_param, 
+                            joint_limits,
+                            fr_name_base,
+                            fr_name_2,
+                            fr_name_4,
+                            fr_name_6,
+                            fr_name_ee);
+        auto end = std::chrono::high_resolution_clock::now();
+        double duration = std::chrono::duration_cast<std::chrono::microseconds>(end - beg).count();
+        total_time += duration;
 
-        // Debug
-        std::cout << "Scene's joint angles, shown again:\n";
-        array_print(config_data, 7);
+        /* Print the solutions that passed */
+        // std::cout << "\nDebug 2 - Number of valid solutions (matching ee): "\
+        // << sols_final.size() << "\n\n";
+        // for (int i = 0; i < sols_final.size(); i++) {
+        //     std::cout << "Solution #" << i+1 << ":\n";
+        //     for (int j = 0; j < 7; j++) {
+        //         std::cout << "q" << j+1 << " = " << sols_final[i][j] << "\n";
+        //     }
+        //     std::cout << "\n";
+        // }
+
+        /* Display time elapsed */
+        // std::cout << "Elapsed time: " << duration << " microseconds\n\n";
+
+        /* Calculate errors compared to initial 7 joint angles started with */
+        double percent_error = 0;
+        int sols_count = sols_final.size();
+        if (sols_count == 0) {
+            percent_error = 100;
+        } else {
+            // int closest_sol_index = -1;
+            solved_num += 1;
+            double min_ssd = DBL_MAX;
+            for (int i = 0; i < sols_count; i++) {
+                double config_temp[7] = {0};
+                for (int k = 0; k < 7; k++) { // from std_array<double> to double *
+                    config_temp[k] = sols_final[i][k];
+                }
+                double ssd = aa_la_ssd(7, config_temp, config_data);
+                // std::cout << "Debug - ssd = " << ssd << "\n";
+                if (ssd < min_ssd) {
+                    min_ssd = ssd;
+                    // closest_sol_index = i;
+                }
+            }
+            // std::cout << "\nDebug - min_ssd = " << min_ssd << "\n";
+            // std::cout << "\nDebug - closest_sol_index = " << closest_sol_index << "\n\n";
+            percent_error = sqrt(min_ssd) / aa_la_norm(7, config_data) * 100;
+            // std::cout << "\nDebug - percent_error = " << percent_error << "\n";
+        }
+
+        total_percent_error += percent_error;
     }
 
+    /* Display averages */
+    std::cout << "\nAcross " << num_runs << " ik runs:\n";
+
+    double solved_percentage = double(solved_num) / double(num_runs) * 100;
+    std::cout << "Solved percentage: " << solved_percentage << " %\n";
+
+    double average_time = total_time / num_runs;
+    std::cout << "Average elapsed time: " << average_time << " microseconds\n";
+
+    double average_error = total_percent_error / num_runs;
+    std::cout << "Average percent error (vector of 7 angles): " << average_error << " %\n\n";
 
     /* Clean up allocated structures */
     aa_rx_fk_destroy(fk);
