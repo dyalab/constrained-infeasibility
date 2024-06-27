@@ -468,11 +468,11 @@ std::vector<std::array<double, 7>> ik7dof(const struct aa_rx_sg *sg,
             case 1:
             case 4:
             case 5:
-                aa_tf_quat2eulerzyz(qu_S_data, euler_S);
+                aa_tf_quat2eulerzyz(qu_S_data, 1, euler_S);
                 break;
 
             default:
-                aa_tf_quat2eulerzyz_negative(qu_S_data, euler_S);
+                aa_tf_quat2eulerzyz(qu_S_data, -1, euler_S);
                 break;
         } 
         sols[i][0] = euler_S[0]; // q1. NEED TO ADD THE SIGN CONVENTIONS HERE
@@ -485,11 +485,11 @@ std::vector<std::array<double, 7>> ik7dof(const struct aa_rx_sg *sg,
             case 2:
             case 4:
             case 6:
-                aa_tf_quat2eulerzyz(qu_W_data, euler_W);
+                aa_tf_quat2eulerzyz(qu_W_data, 1, euler_W);
                 break;
 
             default:
-                aa_tf_quat2eulerzyz_negative(qu_W_data, euler_W);
+                aa_tf_quat2eulerzyz(qu_W_data, -1, euler_W);
                 break;
         } 
         sols[i][4] = euler_W[0]; // q5. NEED TO ADD THE SIGN CONVENTIONS HERE
